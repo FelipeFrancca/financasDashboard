@@ -15,6 +15,7 @@
 - [Como Instalar](#-como-instalar)
 - [Documentação Técnica](#-documentação-técnica)
 - [Docker](#-docker)
+- [Deploy em Produção](#-deploy-em-produção)
 
 ---
 
@@ -449,6 +450,39 @@ docker-compose up -d
 ```
 
 **Documentação completa**: [README_DOCKER.md](./README_DOCKER.md)
+
+---
+
+## 🌐 Deploy em Produção
+
+### Render.com (Recomendado - Gratuito)
+
+Deploy automático a partir do GitHub com banco PostgreSQL incluído:
+
+```bash
+# 1. Push para GitHub
+git push origin main
+
+# 2. No Render.com:
+# - Conecte o repositório
+# - O render.yaml configura tudo automaticamente
+# - Adicione apenas as credenciais opcionais (Google OAuth, Email)
+
+# 3. Acesse sua aplicação
+# https://seu-app.onrender.com
+```
+
+**Documentação completa**: [DEPLOY_RENDER.md](./DEPLOY_RENDER.md)
+
+### Outras Plataformas
+
+A aplicação usa Docker e pode ser deployada em:
+- **Railway.app**: Deploy automático via Dockerfile
+- **Fly.io**: `fly launch` detecta o Dockerfile
+- **AWS ECS/Fargate**: Upload da imagem Docker
+- **Azure Container Instances**: Deploy do container
+- **Google Cloud Run**: Build e deploy automático
+- **Heroku**: Container Registry
 
 ---
 

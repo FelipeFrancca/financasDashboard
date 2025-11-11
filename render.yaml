@@ -1,0 +1,80 @@
+# Render Blueprint para Finanças 360°
+# https://render.com/docs/blueprint-spec
+
+services:
+  # PostgreSQL Database
+  - type: pserv
+    name: financas360-db
+    env: docker
+    plan: free
+    # Render vai gerar a DATABASE_URL automaticamente
+
+  # Web Service (Frontend + Backend)
+  - type: web
+    name: financas360-app
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: NODE_ENV
+        value: production
+      
+      - key: DATABASE_URL
+        fromDatabase:
+          name: financas360-db
+          property: connectionString
+      
+      - key: PORT
+        value: 5000
+      
+      - key: CORS_ORIGIN
+        value: "*"
+      
+      - key: JWT_SECRET
+        generateValue: true
+        sync: false
+      
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+        sync: false
+      
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 30d
+      
+      # Google OAuth (adicione manualmente no dashboard)
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      
+      - key: GOOGLE_CALLBACK_URL
+        sync: false
+      
+      # Email (adicione manualmente no dashboard)
+      - key: EMAIL_HOST
+        value: smtp.gmail.com
+      
+      - key: EMAIL_PORT
+        value: 587
+      
+      - key: EMAIL_SECURE
+        value: false
+      
+      - key: EMAIL_USER
+        sync: false
+      
+      - key: EMAIL_PASSWORD
+        sync: false
+      
+      - key: EMAIL_FROM
+        value: noreply@financas360.com
+
+databases:
+  - name: financas360-db
+    databaseName: financas360
+    plan: free
