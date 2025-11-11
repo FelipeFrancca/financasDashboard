@@ -1,0 +1,27 @@
+# Frontend-specific Docker ignore
+
+# Dependencies
+node_modules
+bun.lockb
+
+# Build outputs
+dist
+build
+
+# Environment
+.env
+.env.*
+
+# Testing
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+coverage
+
+# Logs
+*.log
+
+# IDE
+.vscode
+.idea

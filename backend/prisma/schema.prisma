@@ -1,0 +1,126 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id       String  @id @default(cuid())
+  email    String  @unique
+  name     String?
+  password String? // Null para login com Google
+  googleId String? @unique
+  avatar   String?
+
+  resetToken       String?   @unique
+  resetTokenExpiry DateTime?
+
+  emailVerified     Boolean @default(false)
+  verificationToken String? @unique
+
+  transactions         Transaction[]
+  dashboardsOwned      Dashboard[]
+  dashboardMemberships DashboardMember[]
+  invitesCreated       DashboardInvite[] @relation("InviteCreatedBy")
+  invitesUsed          DashboardInvite[] @relation("InviteUsedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+  @@index([googleId])
+  @@map("users")
+}
+
+model Transaction {
+  id                String   @id @default(cuid())
+  date              DateTime
+  entryType         String // "Receita" ou "Despesa"
+  flowType          String // "Fixa" ou "Variável"
+  category          String
+  subcategory       String?
+  description       String
+  amount            Float
+  paymentMethod     String?
+  institution       String?
+  cardBrand         String?
+  installmentTotal  Int      @default(0)
+  installmentNumber Int      @default(0)
+  installmentStatus String   @default("N/A") // "N/A", "Paga", "Pendente"
+  notes             String?
+  isTemporary       Boolean  @default(false)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@index([entryType])
+  @@index([category])
+  @@index([institution])
+  @@index([userId])
+  @@map("transactions")
+}
+
+enum DashboardRole {
+  VIEWER
+  EDITOR
+  OWNER
+}
+
+model Dashboard {
+  id          String            @id @default(cuid())
+  title       String
+  description String?
+  ownerId     String
+  owner       User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  members     DashboardMember[]
+  invites     DashboardInvite[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@map("dashboards")
+}
+
+model DashboardMember {
+  id          String        @id @default(cuid())
+  dashboardId String
+  dashboard   Dashboard     @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role        DashboardRole @default(VIEWER)
+
+  createdAt DateTime @default(now())
+
+  @@unique([dashboardId, userId])
+  @@map("dashboard_members")
+}
+
+model DashboardInvite {
+  id          String        @id @default(cuid())
+  dashboardId String
+  dashboard   Dashboard     @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  code        String        @unique
+  role        DashboardRole @default(VIEWER)
+  expiresAt   DateTime?
+  isOneTime   Boolean       @default(false)
+  createdById String
+  createdBy   User          @relation("InviteCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  usedById    String?
+  usedBy      User?         @relation("InviteUsedBy", fields: [usedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@map("dashboard_invites")
+}

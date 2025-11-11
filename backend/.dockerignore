@@ -1,0 +1,28 @@
+# Backend-specific Docker ignore
+
+# Dependencies
+node_modules
+bun.lockb
+
+# Build outputs
+dist
+
+# Environment
+.env
+.env.*
+
+# Testing
+*.test.ts
+*.spec.ts
+coverage
+
+# Logs
+*.log
+
+# Prisma
+prisma/dev.db
+prisma/migrations/.keep
+
+# IDE
+.vscode
+.idea
