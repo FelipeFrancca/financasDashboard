@@ -37,7 +37,7 @@ api.interceptors.response.use(
         }
 
         // Try to refresh the token
-        const { data } = await axios.post('/api/auth/refresh', { refreshToken });
+        const { data } = await api.post('/auth/refresh', { refreshToken });
         
         localStorage.setItem('accessToken', data.accessToken);
         localStorage.setItem('refreshToken', data.refreshToken);
@@ -60,12 +60,12 @@ api.interceptors.response.use(
 
 export const authService = {
   login: async (email: string, password: string) => {
-    const { data } = await axios.post('/api/auth/login', { email, password });
+    const { data } = await api.post('/auth/login', { email, password });
     return data;
   },
 
   register: async (email: string, password: string, name?: string) => {
-    const { data } = await axios.post('/api/auth/register', { email, password, name });
+    const { data } = await api.post('/auth/register', { email, password, name });
     return data;
   },
 
@@ -75,12 +75,12 @@ export const authService = {
   },
 
   forgotPassword: async (email: string) => {
-    const { data } = await axios.post('/api/auth/forgot-password', { email });
+    const { data } = await api.post('/auth/forgot-password', { email });
     return data;
   },
 
   resetPassword: async (token: string, password: string) => {
-    const { data } = await axios.post('/api/auth/reset-password', { token, password });
+    const { data } = await api.post('/auth/reset-password', { token, password });
     return data;
   },
 
@@ -90,7 +90,7 @@ export const authService = {
   },
 
   refreshToken: async (refreshToken: string) => {
-    const { data } = await axios.post('/api/auth/refresh', { refreshToken });
+    const { data } = await api.post('/auth/refresh', { refreshToken });
     return data;
   },
 };
@@ -153,7 +153,7 @@ export const dashboardService = {
   },
 
   getSharedPreview: async (code: string) => {
-    const { data } = await axios.get(`/api/dashboards/shared/${code}`);
+    const { data } = await api.get(`/dashboards/shared/${code}`);
     return data;
   }
 };

@@ -41,9 +41,9 @@ router.post("/:id/invites", authenticateToken, async (req: Request, res: Respons
     const userId = (req as any).user?.userId;
     const invite = await dashboardService.createInvite(req.params.id, userId, params.role || "VIEWER", params.expiresAt ? new Date(params.expiresAt) : undefined, params.isOneTime || false);
     // Shareable link
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-    const shareLink = `${frontendUrl}/shared/${invite.code}`;
-    res.status(201).json({ invite, shareLink });
+    const frontendUrl = process.env.FRONTEND_URL;
+    const shareUrl = frontendUrl ? `${frontendUrl}/shared/${invite.code}` : undefined;
+    res.status(201).json({ invite, shareUrl });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ error: "Dados inválidos", details: error.errors });
     res.status(500).json({ error: "Internal server error" });
