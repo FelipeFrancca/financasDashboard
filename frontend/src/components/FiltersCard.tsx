@@ -10,7 +10,9 @@ import {
   MenuItem,
   Collapse,
 } from '@mui/material';
-import { FilterList, ExpandMore, Clear } from '@mui/icons-material';
+import FilterList from '@mui/icons-material/FilterList';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import Clear from '@mui/icons-material/Clear';
 import type { TransactionFilters, Transaction } from '../types';
 
 interface FiltersCardProps {

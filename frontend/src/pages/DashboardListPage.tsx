@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Box, Container, Typography, Button, List, ListItem, ListItemText, Dialog, DialogTitle, DialogContent, TextField, DialogActions, IconButton } from '@mui/material';
-import { Share as ShareIcon } from '@mui/icons-material';
+import ShareIcon from '@mui/icons-material/Share';
 import { useNavigate } from 'react-router-dom';
 import { dashboardService } from '../services/api';
 import ShareDialog from '../components/ShareDialog';
@@ -42,10 +42,10 @@ export default function DashboardListPage() {
 
       <List>
         {dashboards.map((d) => (
-          <ListItem 
-            key={d.id} 
-            button 
-            onClick={() => navigate(`/`) }
+          <ListItem
+            key={d.id}
+            button
+            onClick={() => navigate(`/`)}
             secondaryAction={
               <IconButton edge="end" onClick={(e) => handleShare(d, e)}>
                 <ShareIcon />

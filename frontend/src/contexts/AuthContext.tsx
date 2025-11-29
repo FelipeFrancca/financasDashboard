@@ -19,7 +19,7 @@ interface AuthContextType {
   refreshToken: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => void;
   refreshAccessToken: () => Promise<void>;
@@ -28,68 +28,89 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const API_URL = "http://localhost:5000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [accessToken, setAccessToken] = useState<string | null>(
-    () => localStorage.getItem("accessToken")
-  );
-  const [refreshToken, setRefreshToken] = useState<string | null>(
-    () => localStorage.getItem("refreshToken")
-  );
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [refreshToken, setRefreshToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [persistence, setPersistence] = useState<'local' | 'session'>('local');
 
   // Load user on mount if token exists
   useEffect(() => {
-    if (accessToken) {
-      loadUser();
+    const localAccess = localStorage.getItem("accessToken");
+    const localRefresh = localStorage.getItem("refreshToken");
+    const sessionAccess = sessionStorage.getItem("accessToken");
+    const sessionRefresh = sessionStorage.getItem("refreshToken");
+
+    if (localAccess && localRefresh) {
+      setAccessToken(localAccess);
+      setRefreshToken(localRefresh);
+      setPersistence('local');
+      loadUser(localAccess);
+    } else if (sessionAccess && sessionRefresh) {
+      setAccessToken(sessionAccess);
+      setRefreshToken(sessionRefresh);
+      setPersistence('session');
+      loadUser(sessionAccess);
     } else {
       setIsLoading(false);
     }
   }, []);
 
-  const loadUser = async () => {
-    if (!accessToken) {
-      setIsLoading(false);
-      return;
-    }
-
+  const loadUser = async (token: string) => {
     try {
       const response = await axios.get(`${API_URL}/api/auth/me`, {
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${token}`,
         },
       });
-      setUser(response.data.user);
+      // Backend returns { success: true, data: { user, ... } }
+      setUser(response.data.data || response.data.user);
     } catch (error) {
       console.error("Failed to load user:", error);
-      // Try to refresh token
-      try {
-        await refreshAccessToken();
-      } catch (refreshError) {
-        // If refresh fails, clear tokens
-        logout();
-      }
+      // If token is invalid, clear everything without trying to refresh
+      // This prevents infinite loops when refresh token is also invalid
+      setUser(null);
+      setAccessToken(null);
+      setRefreshToken(null);
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      sessionStorage.removeItem("accessToken");
+      sessionStorage.removeItem("refreshToken");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, rememberMe: boolean = true) => {
     const response = await axios.post(`${API_URL}/api/auth/login`, {
       email,
       password,
     });
 
-    const { user, accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
+    const { user, accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data.data;
 
     setUser(user);
     setAccessToken(newAccessToken);
     setRefreshToken(newRefreshToken);
 
-    localStorage.setItem("accessToken", newAccessToken);
-    localStorage.setItem("refreshToken", newRefreshToken);
+    const storage = rememberMe ? localStorage : sessionStorage;
+    const type = rememberMe ? 'local' : 'session';
+    setPersistence(type);
+
+    // Clear other storage to avoid confusion
+    if (rememberMe) {
+      sessionStorage.removeItem("accessToken");
+      sessionStorage.removeItem("refreshToken");
+    } else {
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+    }
+
+    storage.setItem("accessToken", newAccessToken);
+    storage.setItem("refreshToken", newRefreshToken);
 
     // If there is a pending share code (user clicked a shared link before login), accept it now
     try {
@@ -111,14 +132,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name,
     });
 
-    const { user, accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
+    const { user, accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data.data;
 
     setUser(user);
     setAccessToken(newAccessToken);
     setRefreshToken(newRefreshToken);
+    setPersistence('local'); // Default to local for register
 
     localStorage.setItem("accessToken", newAccessToken);
     localStorage.setItem("refreshToken", newRefreshToken);
+    sessionStorage.removeItem("accessToken");
+    sessionStorage.removeItem("refreshToken");
 
     // Accept pending share if exists
     try {
@@ -138,15 +162,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRefreshToken(null);
     localStorage.removeItem("accessToken");
     localStorage.removeItem("refreshToken");
+    sessionStorage.removeItem("accessToken");
+    sessionStorage.removeItem("refreshToken");
   };
 
   const refreshAccessToken = async () => {
-    if (!refreshToken) {
+    const currentRefresh = persistence === 'local'
+      ? localStorage.getItem("refreshToken")
+      : sessionStorage.getItem("refreshToken");
+
+    if (!currentRefresh) {
       throw new Error("No refresh token available");
     }
 
     const response = await axios.post(`${API_URL}/api/auth/refresh`, {
-      refreshToken,
+      refreshToken: currentRefresh,
     });
 
     const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
@@ -154,19 +184,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(newAccessToken);
     setRefreshToken(newRefreshToken);
 
-    localStorage.setItem("accessToken", newAccessToken);
-    localStorage.setItem("refreshToken", newRefreshToken);
+    const storage = persistence === 'local' ? localStorage : sessionStorage;
+    storage.setItem("accessToken", newAccessToken);
+    storage.setItem("refreshToken", newRefreshToken);
 
     // Reload user with new token
-    await loadUser();
+    // Note: loadUser calls refreshAccessToken on error, so we need to be careful not to loop infinitely.
+    // Here we just update the state.
   };
 
   const setTokens = (access: string, refresh: string) => {
     setAccessToken(access);
     setRefreshToken(refresh);
-    localStorage.setItem("accessToken", access);
-    localStorage.setItem("refreshToken", refresh);
-    loadUser();
+
+    // Default to local if not set (e.g. from external call)
+    const storage = persistence === 'session' ? sessionStorage : localStorage;
+    storage.setItem("accessToken", access);
+    storage.setItem("refreshToken", refresh);
+
+    loadUser(access);
   };
 
   return (

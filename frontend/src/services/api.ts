@@ -1,8 +1,10 @@
 import axios from 'axios';
 import type { Transaction, TransactionFilters, StatsSummary } from '../types';
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: `${API_BASE_URL}/api`,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -11,9 +13,20 @@ const api = axios.create({
 // Add request interceptor to include auth token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('accessToken') || sessionStorage.getItem('accessToken');
     if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+      // Basic JWT validation: should have 3 parts separated by dots
+      const tokenParts = token.split('.');
+      if (tokenParts.length === 3) {
+        config.headers.Authorization = `Bearer ${token}`;
+      } else {
+        // Token is malformed, clean it up
+        console.warn('Malformed token detected, cleaning up storage');
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        sessionStorage.removeItem('accessToken');
+        sessionStorage.removeItem('refreshToken');
+      }
     }
     return config;
   },
@@ -31,16 +44,22 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        const refreshToken = localStorage.getItem('refreshToken');
+        const refreshToken = localStorage.getItem('refreshToken') || sessionStorage.getItem('refreshToken');
         if (!refreshToken) {
           throw new Error('No refresh token');
         }
 
         // Try to refresh the token
         const { data } = await api.post('/auth/refresh', { refreshToken });
-        
-        localStorage.setItem('accessToken', data.accessToken);
-        localStorage.setItem('refreshToken', data.refreshToken);
+
+        // Save to the storage where it was found, or default to local
+        if (sessionStorage.getItem('refreshToken')) {
+          sessionStorage.setItem('accessToken', data.accessToken);
+          sessionStorage.setItem('refreshToken', data.refreshToken);
+        } else {
+          localStorage.setItem('accessToken', data.accessToken);
+          localStorage.setItem('refreshToken', data.refreshToken);
+        }
 
         // Retry original request with new token
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
@@ -49,6 +68,8 @@ api.interceptors.response.use(
         // If refresh fails, redirect to login
         localStorage.removeItem('accessToken');
         localStorage.removeItem('refreshToken');
+        sessionStorage.removeItem('accessToken');
+        sessionStorage.removeItem('refreshToken');
         window.location.href = '/login';
         return Promise.reject(refreshError);
       }
@@ -61,12 +82,12 @@ api.interceptors.response.use(
 export const authService = {
   login: async (email: string, password: string) => {
     const { data } = await api.post('/auth/login', { email, password });
-    return data;
+    return data.data;
   },
 
   register: async (email: string, password: string, name?: string) => {
     const { data } = await api.post('/auth/register', { email, password, name });
-    return data;
+    return data.data;
   },
 
   logout: () => {
@@ -86,39 +107,39 @@ export const authService = {
 
   getMe: async () => {
     const { data } = await api.get('/auth/me');
-    return data;
+    return data.data;
   },
 
   refreshToken: async (refreshToken: string) => {
     const { data } = await api.post('/auth/refresh', { refreshToken });
-    return data;
+    return data.data;
   },
 };
 
 export const transactionService = {
   getAll: async (filters?: TransactionFilters): Promise<Transaction[]> => {
     const { data } = await api.get('/transactions', { params: filters });
-    return data;
+    return data.data;
   },
 
   getById: async (id: string): Promise<Transaction> => {
     const { data } = await api.get(`/transactions/${id}`);
-    return data;
+    return data.data;
   },
 
   create: async (transaction: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>): Promise<Transaction> => {
     const { data } = await api.post('/transactions', transaction);
-    return data;
+    return data.data;
   },
 
   createMany: async (transactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<{ count: number; transactions: Transaction[] }> => {
     const { data } = await api.post('/transactions/bulk', transactions);
-    return data;
+    return data.data;
   },
 
   update: async (id: string, transaction: Partial<Transaction>): Promise<Transaction> => {
     const { data } = await api.put(`/transactions/${id}`, transaction);
-    return data;
+    return data.data;
   },
 
   delete: async (id: string): Promise<void> => {
@@ -127,33 +148,156 @@ export const transactionService = {
 
   getStats: async (filters?: TransactionFilters): Promise<StatsSummary> => {
     const { data } = await api.get('/transactions/stats/summary', { params: filters });
-    return data;
+    return data.data;
   },
 };
 
 export const dashboardService = {
   list: async () => {
     const { data } = await api.get('/dashboards');
-    return data;
+    return data.data;
   },
 
   create: async (title: string, description?: string) => {
     const { data } = await api.post('/dashboards', { title, description });
-    return data;
+    return data.data;
   },
 
   createInvite: async (dashboardId: string, opts?: { role?: 'VIEWER' | 'EDITOR'; expiresAt?: string; isOneTime?: boolean }) => {
     const { data } = await api.post(`/dashboards/${dashboardId}/invites`, opts || {});
-    return data;
+    return data.data;
   },
 
   acceptInvite: async (code: string) => {
     const { data } = await api.post('/dashboards/accept-invite', { code });
-    return data;
+    return data.data;
   },
 
   getSharedPreview: async (code: string) => {
     const { data } = await api.get(`/dashboards/shared/${code}`);
-    return data;
+    return data.data;
   }
 };
+
+export const categoryService = {
+  getAll: async () => {
+    const { data } = await api.get('/categories');
+    // Backend may return paginated response { data: { data: [...], total: number } } or direct array
+    return data.data?.data || data.data || [];
+  },
+  create: async (category: any) => {
+    const { data } = await api.post('/categories', category);
+    return data.data;
+  },
+  update: async (id: string, category: any) => {
+    const { data } = await api.put(`/categories/${id}`, category);
+    return data.data;
+  },
+  delete: async (id: string) => {
+    await api.delete(`/categories/${id}`);
+  }
+};
+
+export const accountService = {
+  getAll: async () => {
+    const { data } = await api.get('/accounts');
+    // Backend returns { success: true, data: { data: [...], total: number } }
+    return data.data?.data || data.data || [];
+  },
+  create: async (account: any) => {
+    const { data } = await api.post('/accounts', account);
+    return data.data;
+  },
+  update: async (id: string, account: any) => {
+    const { data } = await api.put(`/accounts/${id}`, account);
+    return data.data;
+  },
+  delete: async (id: string) => {
+    await api.delete(`/accounts/${id}`);
+  }
+};
+
+export const goalService = {
+  getAll: async () => {
+    const { data } = await api.get('/goals');
+    return data.data;
+  },
+  create: async (goal: any) => {
+    const { data } = await api.post('/goals', goal);
+    return data.data;
+  },
+  update: async (id: string, goal: any) => {
+    const { data } = await api.put(`/goals/${id}`, goal);
+    return data.data;
+  },
+  delete: async (id: string) => {
+    await api.delete(`/goals/${id}`);
+  }
+};
+
+export const budgetService = {
+  getAll: async () => {
+    const { data } = await api.get('/budgets');
+    // Backend returns { success: true, data: { data: Budget[], total: number } }
+    return data.data?.data || data.data || [];
+  },
+  create: async (budget: any) => {
+    const { data } = await api.post('/budgets', budget);
+    return data.data;
+  },
+  update: async (id: string, budget: any) => {
+    const { data } = await api.put(`/budgets/${id}`, budget);
+    return data.data;
+  },
+  delete: async (id: string) => {
+    await api.delete(`/budgets/${id}`);
+  }
+};
+
+export const recurrenceService = {
+  getAll: async () => {
+    const { data } = await api.get('/recurrences');
+    return data.data;
+  },
+  create: async (recurrence: any) => {
+    const { data } = await api.post('/recurrences', recurrence);
+    return data.data;
+  },
+  update: async (id: string, recurrence: any) => {
+    const { data } = await api.put(`/recurrences/${id}`, recurrence);
+    return data.data;
+  },
+  delete: async (id: string) => {
+    await api.delete(`/recurrences/${id}`);
+  }
+};
+
+export const transferService = {
+  getAll: async () => {
+    const { data } = await api.get('/transfers');
+    return data.data?.data || data.data || [];
+  },
+  create: async (transfer: any) => {
+    const { data } = await api.post('/transfers', transfer);
+    return data.data;
+  },
+  delete: async (id: string) => {
+    await api.delete(`/transfers/${id}`);
+  }
+};
+
+export const alertService = {
+  getAll: async () => {
+    const { data } = await api.get('/alerts');
+    return data.data;
+  },
+  markAsRead: async (id: string) => {
+    const { data } = await api.put(`/alerts/${id}/read`);
+    return data.data;
+  },
+  delete: async (id: string) => {
+    await api.delete(`/alerts/${id}`);
+  }
+};
+
+export default api;

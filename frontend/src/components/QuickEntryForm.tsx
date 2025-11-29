@@ -1,7 +1,7 @@
 import { Card, CardHeader, CardContent, TextField, Button, MenuItem, Grid } from '@mui/material';
-import { FlashOn } from '@mui/icons-material';
+import FlashOn from '@mui/icons-material/FlashOn';
 import { useState } from 'react';
-import Swal from 'sweetalert2';
+import { showError } from '../utils/notifications';
 
 interface QuickEntryFormProps {
   onSave: (data: any) => Promise<void>;
@@ -32,7 +32,7 @@ export default function QuickEntryForm({ onSave, onRefetch }: QuickEntryFormProp
       setFormData({ ...formData, description: '', amount: '' });
       onRefetch();
     } catch (error) {
-      Swal.fire({ icon: 'error', title: 'Erro', text: 'Não foi possível salvar' });
+      showError(error, { title: 'Erro', text: 'Não foi possível salvar' });
     }
   };
 

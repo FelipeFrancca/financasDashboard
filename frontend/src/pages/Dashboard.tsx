@@ -15,16 +15,13 @@ import {
   ListItemIcon,
   Divider,
 } from '@mui/material';
-import {
-  Brightness4,
-  Brightness7,
-  KeyboardAlt,
-  Logout,
-  Dashboard as DashboardIcon,
-} from '@mui/icons-material';
+import Brightness4 from '@mui/icons-material/Brightness4';
+import Brightness7 from '@mui/icons-material/Brightness7';
+import KeyboardAlt from '@mui/icons-material/KeyboardAlt';
+import Logout from '@mui/icons-material/Logout';
+import DashboardIcon from '@mui/icons-material/Dashboard';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import Swal from 'sweetalert2';
 import { transactionService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import type { Transaction, TransactionFilters } from '../types';
@@ -36,6 +33,7 @@ import TransactionForm from '../components/TransactionForm';
 import QuickEntryForm from '../components/QuickEntryForm';
 import FileUpload from '../components/FileUpload';
 import ShortcutsModal from '../components/ShortcutsModal';
+import { showSuccess, showError, showConfirm, showWarning } from '../utils/notifications';
 
 interface DashboardProps {
   mode: 'light' | 'dark';
@@ -47,7 +45,7 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  
+
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
@@ -119,34 +117,25 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
   };
 
   const handleDeleteTransaction = async (id: string) => {
-    const result = await Swal.fire({
-      title: 'Confirmar exclusão?',
-      text: 'Esta ação não poderá ser desfeita.',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: theme.palette.error.main,
-      cancelButtonColor: theme.palette.grey[500],
-      confirmButtonText: 'Sim, excluir',
-      cancelButtonText: 'Cancelar',
-    });
+    const result = await showConfirm(
+      'Esta ação não poderá ser desfeita.',
+      {
+        title: 'Confirmar exclusão?',
+        icon: 'warning',
+        confirmButtonText: 'Sim, excluir',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: theme.palette.error.main,
+        cancelButtonColor: theme.palette.grey[500],
+      }
+    );
 
     if (result.isConfirmed) {
       try {
         await transactionService.delete(id);
         refetch();
-        Swal.fire({
-          icon: 'success',
-          title: 'Excluído!',
-          text: 'Transação removida com sucesso.',
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        showSuccess('Transação removida com sucesso.', { title: 'Excluído!', timer: 2000 });
       } catch (error) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Erro',
-          text: 'Não foi possível excluir a transação.',
-        });
+        showError(error, { title: 'Erro', text: 'Não foi possível excluir a transação.' });
       }
     }
   };
@@ -155,31 +144,15 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
     try {
       if (selectedTransaction) {
         await transactionService.update(selectedTransaction.id, data);
-        Swal.fire({
-          icon: 'success',
-          title: 'Atualizado!',
-          text: 'Transação atualizada com sucesso.',
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!', timer: 2000 });
       } else {
         await transactionService.create(data as any);
-        Swal.fire({
-          icon: 'success',
-          title: 'Criado!',
-          text: 'Transação criada com sucesso.',
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        showSuccess('Transação criada com sucesso.', { title: 'Criado!', timer: 2000 });
       }
       refetch();
       setShowTransactionForm(false);
     } catch (error) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Erro',
-        text: 'Não foi possível salvar a transação.',
-      });
+      showError(error, { title: 'Erro', text: 'Não foi possível salvar a transação.' });
     }
   };
 
@@ -187,34 +160,20 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
     try {
       const result = await transactionService.createMany(importedTransactions as any);
       refetch();
-      Swal.fire({
-        icon: 'success',
-        title: 'Importado!',
-        text: `${result.count} transações importadas com sucesso.`,
-        timer: 3000,
-        showConfirmButton: false,
-      });
+      showSuccess(`${result.count} transações importadas com sucesso.`, { title: 'Importado!', timer: 3000 });
     } catch (error) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Erro',
-        text: 'Não foi possível importar as transações.',
-      });
+      showError(error, { title: 'Erro', text: 'Não foi possível importar as transações.' });
     }
   };
 
   const handleExport = useCallback(() => {
     if (!transactions.length) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Sem dados',
-        text: 'Não há transações para exportar.',
-      });
+      showWarning('Não há transações para exportar.', { title: 'Sem dados' });
       return;
     }
 
     const header = 'Data;Tipo;Fluxo;Categoria;Subcategoria;Descricao;Valor;MetodoPag;ParcelasTotal;ParcelaAtual;StatusParcela;Fonte;Observacao\n';
-    const rows = transactions.map(t => {
+    const rows = transactions.map((t: any) => {
       const date = new Date(t.date).toLocaleDateString('pt-BR');
       return [
         date,
@@ -244,20 +203,14 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    Swal.fire({
-      icon: 'success',
-      title: 'Exportado!',
-      text: 'Arquivo CSV baixado com sucesso.',
-      timer: 2000,
-      showConfirmButton: false,
-    });
+    showSuccess('Arquivo CSV baixado com sucesso.', { title: 'Exportado!', timer: 2000 });
   }, [transactions]);
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       {/* AppBar */}
-      <AppBar position="sticky" elevation={0} sx={{ 
-        background: mode === 'dark' 
+      <AppBar position="sticky" elevation={0} sx={{
+        background: mode === 'dark'
           ? 'linear-gradient(120deg, #2d1b69 0%, #5b21b6 45%, #7c3aed 100%)'
           : 'linear-gradient(120deg, #7c3aed 0%, #9333ea 50%, #a855f7 100%)',
         borderBottom: '1px solid',
@@ -267,7 +220,7 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700, letterSpacing: 1.5 }}>
             FINANÇAS 360°
           </Typography>
-          
+
           {!isMobile && (
             <Box sx={{ display: 'flex', gap: 1, mr: 2 }}>
               <Chip label="Filtros (G)" size="small" sx={{ opacity: 0.8 }} />
@@ -276,7 +229,7 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
             </Box>
           )}
 
-          <Chip 
+          <Chip
             label={`Atualizado ${lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`}
             size="small"
             sx={{ mr: 1 }}

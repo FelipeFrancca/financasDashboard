@@ -4,14 +4,22 @@
   "description": "API Backend para Dashboard Financeiro",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
+    "dev": "bun run src/bootstrap.ts",
+    "dev:fast": "bun --watch src/index.ts",
     "build": "bun build src/index.ts --outdir dist --target bun",
     "start": "bun run dist/index.js",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"
   },
-  "keywords": ["finance", "dashboard", "api"],
+  "keywords": [
+    "finance",
+    "dashboard",
+    "api"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
@@ -40,5 +48,8 @@
     "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.6",
     "prisma": "^5.22.0"
+  },
+  "prisma": {
+    "seed": "bun run prisma/seed.ts"
   }
 }

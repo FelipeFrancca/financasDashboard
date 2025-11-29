@@ -1,5 +1,6 @@
 import { Grid, Card, CardHeader, CardContent } from '@mui/material';
-import { ShowChart, PieChart } from '@mui/icons-material';
+import ShowChart from '@mui/icons-material/ShowChart';
+import PieChart from '@mui/icons-material/PieChart';
 import { LineChart, Line, PieChart as RechartsPie, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { format, startOfMonth, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -40,7 +41,7 @@ export default function ChartsSection({ transactions }: ChartsSectionProps) {
   const categoryData = (() => {
     const expenses = transactions.filter(t => t.entryType === 'Despesa');
     const categoryMap = new Map<string, number>();
-    
+
     expenses.forEach(t => {
       const current = categoryMap.get(t.category) || 0;
       categoryMap.set(t.category, current + t.amount);

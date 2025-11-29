@@ -5,7 +5,6 @@ import {
   useTheme,
 } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import Swal from 'sweetalert2';
 import { transactionService } from '../services/api';
 import type { Transaction, TransactionFilters } from '../types';
 import MetricsCards from '../components/MetricsCards';
@@ -15,14 +14,13 @@ import TransactionsTable from '../components/TransactionsTable';
 import TransactionForm from '../components/TransactionForm';
 import QuickEntryForm from '../components/QuickEntryForm';
 import FileUpload from '../components/FileUpload';
+import { useParams } from 'react-router-dom';
+import { showSuccess, showError, showConfirm, showWarning } from '../utils/notifications';
 
-interface DashboardFinancialProps {
-  dashboardId?: string;
-}
-
-export default function DashboardFinancial({ dashboardId }: DashboardFinancialProps) {
+export default function DashboardFinancial() {
+  const { dashboardId } = useParams<{ dashboardId: string }>();
   const theme = useTheme();
-  
+
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
@@ -30,13 +28,13 @@ export default function DashboardFinancial({ dashboardId }: DashboardFinancialPr
   // Query para buscar transações
   const { data: transactions = [], refetch, isLoading } = useQuery({
     queryKey: ['transactions', filters, dashboardId],
-    queryFn: () => transactionService.getAll(filters),
+    queryFn: () => transactionService.getAll({ ...filters, dashboardId }),
   });
 
   // Query para estatísticas
   const { data: stats } = useQuery({
     queryKey: ['stats', filters, dashboardId],
-    queryFn: () => transactionService.getStats(filters),
+    queryFn: () => transactionService.getStats({ ...filters, dashboardId }),
   });
 
   const handleNewTransaction = () => {
@@ -50,34 +48,25 @@ export default function DashboardFinancial({ dashboardId }: DashboardFinancialPr
   };
 
   const handleDeleteTransaction = async (id: string) => {
-    const result = await Swal.fire({
-      title: 'Confirmar exclusão?',
-      text: 'Esta ação não poderá ser desfeita.',
-      icon: 'warning',
-      showCancelButton: true,
-      confirmButtonColor: theme.palette.error.main,
-      cancelButtonColor: theme.palette.grey[500],
-      confirmButtonText: 'Sim, excluir',
-      cancelButtonText: 'Cancelar',
-    });
+    const result = await showConfirm(
+      'Esta ação não poderá ser desfeita.',
+      {
+        title: 'Confirmar exclusão?',
+        icon: 'warning',
+        confirmButtonText: 'Sim, excluir',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: theme.palette.error.main,
+        cancelButtonColor: theme.palette.grey[500],
+      }
+    );
 
     if (result.isConfirmed) {
       try {
         await transactionService.delete(id);
         refetch();
-        Swal.fire({
-          icon: 'success',
-          title: 'Excluído!',
-          text: 'Transação removida com sucesso.',
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        showSuccess('Transação removida com sucesso.', { title: 'Excluído!' });
       } catch (error) {
-        Swal.fire({
-          icon: 'error',
-          title: 'Erro',
-          text: 'Não foi possível excluir a transação.',
-        });
+        showError(error, { title: 'Erro', text: 'Não foi possível excluir a transação.' });
       }
     }
   };
@@ -86,31 +75,15 @@ export default function DashboardFinancial({ dashboardId }: DashboardFinancialPr
     try {
       if (selectedTransaction) {
         await transactionService.update(selectedTransaction.id, data);
-        Swal.fire({
-          icon: 'success',
-          title: 'Atualizado!',
-          text: 'Transação atualizada com sucesso.',
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!' });
       } else {
         await transactionService.create(data as any);
-        Swal.fire({
-          icon: 'success',
-          title: 'Criado!',
-          text: 'Transação criada com sucesso.',
-          timer: 2000,
-          showConfirmButton: false,
-        });
+        showSuccess('Transação criada com sucesso.', { title: 'Criado!' });
       }
       refetch();
       setShowTransactionForm(false);
     } catch (error) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Erro',
-        text: 'Não foi possível salvar a transação.',
-      });
+      showError(error, { title: 'Erro', text: 'Não foi possível salvar a transação.' });
     }
   };
 
@@ -118,29 +91,15 @@ export default function DashboardFinancial({ dashboardId }: DashboardFinancialPr
     try {
       const result = await transactionService.createMany(importedTransactions as any);
       refetch();
-      Swal.fire({
-        icon: 'success',
-        title: 'Importado!',
-        text: `${result.count} transações importadas com sucesso.`,
-        timer: 3000,
-        showConfirmButton: false,
-      });
+      showSuccess(`${result.count} transações importadas com sucesso.`, { title: 'Importado!', timer: 3000 });
     } catch (error) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Erro',
-        text: 'Não foi possível importar as transações.',
-      });
+      showError(error, { title: 'Erro', text: 'Não foi possível importar as transações.' });
     }
   };
 
   const handleExport = useCallback(() => {
     if (!transactions.length) {
-      Swal.fire({
-        icon: 'warning',
-        title: 'Sem dados',
-        text: 'Não há transações para exportar.',
-      });
+      showWarning('Não há transações para exportar.', { title: 'Sem dados' });
       return;
     }
 
@@ -175,13 +134,7 @@ export default function DashboardFinancial({ dashboardId }: DashboardFinancialPr
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    Swal.fire({
-      icon: 'success',
-      title: 'Exportado!',
-      text: 'Arquivo CSV baixado com sucesso.',
-      timer: 2000,
-      showConfirmButton: false,
-    });
+    showSuccess('Arquivo CSV baixado com sucesso.', { title: 'Exportado!' });
   }, [transactions]);
 
   return (

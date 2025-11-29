@@ -15,9 +15,9 @@ import {
   IconButton,
   Alert,
 } from '@mui/material';
-import { ContentCopy } from '@mui/icons-material';
-import Swal from 'sweetalert2';
+import ContentCopy from '@mui/icons-material/ContentCopy';
 import { dashboardService } from '../services/api';
+import { showSuccess, showError } from '../utils/notifications';
 
 interface ShareDialogProps {
   open: boolean;
@@ -40,11 +40,7 @@ export default function ShareDialog({ open, onClose, dashboardId, dashboardTitle
       const result = await dashboardService.createInvite(dashboardId, { role, expiresAt, isOneTime });
       setShareLink(result.shareLink);
     } catch (error: any) {
-      Swal.fire({
-        icon: 'error',
-        title: 'Erro',
-        text: error.response?.data?.error || 'Erro ao gerar link de compartilhamento',
-      });
+      showError(error, { title: 'Erro', text: 'Erro ao gerar link de compartilhamento' });
     } finally {
       setLoading(false);
     }
@@ -52,13 +48,7 @@ export default function ShareDialog({ open, onClose, dashboardId, dashboardTitle
 
   const handleCopy = () => {
     navigator.clipboard.writeText(shareLink);
-    Swal.fire({
-      icon: 'success',
-      title: 'Copiado!',
-      text: 'Link copiado para a área de transferência',
-      timer: 1500,
-      showConfirmButton: false,
-    });
+    showSuccess('Link copiado para a área de transferência', { title: 'Copiado!', timer: 1500 });
   };
 
   const handleClose = () => {

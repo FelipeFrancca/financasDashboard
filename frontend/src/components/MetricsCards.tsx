@@ -1,10 +1,8 @@
 import { Grid, Card, CardContent, Typography, Box } from '@mui/material';
-import {
-  TrendingUp,
-  TrendingDown,
-  AccountBalance,
-  Shield,
-} from '@mui/icons-material';
+import TrendingUp from '@mui/icons-material/TrendingUp';
+import TrendingDown from '@mui/icons-material/TrendingDown';
+import AccountBalance from '@mui/icons-material/AccountBalance';
+import Shield from '@mui/icons-material/Shield';
 import type { StatsSummary, Transaction } from '../types';
 
 interface MetricsCardsProps {

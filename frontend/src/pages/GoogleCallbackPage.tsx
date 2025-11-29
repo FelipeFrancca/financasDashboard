@@ -14,7 +14,7 @@ export default function GoogleCallbackPage() {
 
     if (accessToken && refreshToken) {
       setTokens(accessToken, refreshToken);
-      navigate("/", { replace: true });
+      navigate("/dashboards", { replace: true });
     } else {
       // If no tokens, redirect to login with error
       navigate("/login", { replace: true });

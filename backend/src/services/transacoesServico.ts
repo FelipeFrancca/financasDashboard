@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from '../database/conexao';
 import type { Transaction, Prisma } from "@prisma/client";
-
-const prisma = new PrismaClient();
 
 export type TransactionFilters = {
   startDate?: string;
@@ -70,7 +68,7 @@ export async function getAllTransactions(filters: TransactionFilters = {}, userI
 
 export async function getTransactionById(id: string, userId: string): Promise<Transaction | null> {
   return prisma.transaction.findFirst({
-    where: { 
+    where: {
       id,
       userId,
     } as any,
@@ -109,7 +107,7 @@ export async function updateTransaction(id: string, data: any, userId: string): 
       updateData.date = new Date(data.date);
     }
     return await prisma.transaction.updateMany({
-      where: { 
+      where: {
         id,
         userId,
       } as any,
@@ -127,7 +125,7 @@ export async function updateTransaction(id: string, data: any, userId: string): 
 
 export async function deleteTransaction(id: string, userId: string): Promise<void> {
   await prisma.transaction.deleteMany({
-    where: { 
+    where: {
       id,
       userId,
     } as any,

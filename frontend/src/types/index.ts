@@ -29,6 +29,7 @@ export interface TransactionFilters {
   installmentStatus?: string;
   search?: string;
   minAmount?: string;
+  dashboardId?: string;
 }
 
 export interface StatsSummary {

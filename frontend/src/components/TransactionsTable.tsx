@@ -1,5 +1,8 @@
 import { Card, CardHeader, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, Button, Chip, Box, CircularProgress } from '@mui/material';
-import { Edit, Delete, Add, FileDownload } from '@mui/icons-material';
+import Edit from '@mui/icons-material/Edit';
+import Delete from '@mui/icons-material/Delete';
+import Add from '@mui/icons-material/Add';
+import FileDownload from '@mui/icons-material/FileDownload';
 import type { Transaction } from '../types';
 
 interface TransactionsTableProps {

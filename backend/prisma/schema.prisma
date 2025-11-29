@@ -25,11 +25,19 @@ model User {
   emailVerified     Boolean @default(false)
   verificationToken String? @unique
 
+  // Relacionamentos
   transactions         Transaction[]
+  accounts             Account[]
+  budgets              Budget[]
+  categories           Category[]
+  financialGoals       FinancialGoal[]
+  alerts               Alert[]
+  recurringTransactions RecurringTransaction[]
   dashboardsOwned      Dashboard[]
   dashboardMemberships DashboardMember[]
   invitesCreated       DashboardInvite[] @relation("InviteCreatedBy")
   invitesUsed          DashboardInvite[] @relation("InviteUsedBy")
+  auditLogs            AuditLog[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -57,8 +65,23 @@ model Transaction {
   notes             String?
   isTemporary       Boolean  @default(false)
 
+  // Relacionamento com Account (opcional para manter compatibilidade)
+  accountId String?
+  account   Account? @relation("AccountTransactions", fields: [accountId], references: [id], onDelete: SetNull)
+
+  // Para transferências entre contas
+  transferToAccountId   String?
+  transferToAccount     Account? @relation("TransferToAccount", fields: [transferToAccountId], references: [id], onDelete: SetNull)
+  linkedTransactionId   String?  @unique
+  linkedTransaction     Transaction? @relation("LinkedTransfer", fields: [linkedTransactionId], references: [id])
+  linkedTransactionRef  Transaction? @relation("LinkedTransfer")
+
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Soft delete
+  deletedAt DateTime?
+  deletedBy String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -68,6 +91,10 @@ model Transaction {
   @@index([category])
   @@index([institution])
   @@index([userId])
+  @@index([accountId])
+  @@index([userId, date])
+  @@index([userId, category, date])
+  @@index([deletedAt])
   @@map("transactions")
 }
 
@@ -123,4 +150,336 @@ model DashboardInvite {
   createdAt DateTime @default(now())
 
   @@map("dashboard_invites")
+}
+
+// ============================================
+// ACCOUNT MODEL - Para gerenciar contas financeiras
+// ============================================
+
+enum AccountType {
+  CHECKING      // Conta corrente
+  SAVINGS       // Poupança
+  CREDIT_CARD   // Cartão de crédito
+  INVESTMENT    // Investimentos
+  CASH          // Dinheiro
+  OTHER         // Outros
+}
+
+enum AccountStatus {
+  ACTIVE
+  INACTIVE
+  CLOSED
+}
+
+model Account {
+  id          String        @id @default(cuid())
+  name        String        // Ex: "Banco XYZ - Conta Corrente"
+  type        AccountType
+  institution String?       // Nome do banco/instituição
+  currency    String        @default("BRL")
+  
+  // Saldos
+  initialBalance   Float   @default(0) // Saldo inicial ao criar a conta
+  currentBalance   Float   @default(0) // Calculado automaticamente
+  availableBalance Float   @default(0) // Para cartões: limite - usado
+  creditLimit      Float?  // Limite de crédito (cartões)
+  
+  // Controle
+  status      AccountStatus @default(ACTIVE)
+  isPrimary   Boolean       @default(false) // Conta principal
+  
+  // Personalização (UI)
+  color       String?       // Cor para exibição
+  icon        String?       // Ícone para exibição
+  description String?       // Descrição adicional
+  
+  // Relacionamentos
+  userId              String
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions        Transaction[] @relation("AccountTransactions")
+  transferFrom        Transaction[] @relation("TransferToAccount")
+  
+  // Auditoria e Soft Delete
+  deletedAt   DateTime?
+  deletedBy   String?
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  @@index([userId, status])
+  @@index([type])
+  @@index([userId, isPrimary])
+  @@index([deletedAt])
+  @@map("accounts")
+}
+
+// ============================================
+// BUDGET MODEL - Orçamentos
+// ============================================
+
+enum BudgetPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+model Budget {
+  id          String       @id @default(cuid())
+  name        String
+  amount      Float        // Limite do orçamento
+  period      BudgetPeriod @default(MONTHLY)
+  category    String?      // Categoria específica ou null para geral
+  
+  // Período ativo
+  startDate   DateTime
+  endDate     DateTime?    // Null = sem fim
+  
+  // Alertas
+  alertAt     Float?       // % para alertar (ex: 80 = alerta em 80%)
+  
+  // Controle
+  isActive    Boolean      @default(true)
+  
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Auditoria
+  deletedAt   DateTime?
+  deletedBy   String?
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  @@index([userId, isActive])
+  @@index([userId, category])
+  @@index([startDate, endDate])
+  @@index([deletedAt])
+  @@map("budgets")
+}
+
+// ============================================
+// CATEGORY MODEL - Categorias Estruturadas
+// ============================================
+
+model Category {
+  id          String     @id @default(cuid())
+  name        String
+  type        String     // "Receita" ou "Despesa"
+  icon        String?
+  color       String?
+  
+  // Hierarquia
+  parentId    String?
+  parent      Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Category[] @relation("CategoryTree")
+  
+  // Sistema vs Usuário
+  isSystem    Boolean    @default(false) // Categorias padrão do sistema
+  userId      String?    // null = categoria do sistema
+  user        User?      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Controle
+  isActive    Boolean    @default(true)
+  order       Int        @default(0)     // Ordem de exibição
+  
+  // Auditoria
+  deletedAt   DateTime?
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  
+  @@unique([name, userId, type])
+  @@index([type, isActive])
+  @@index([userId, isActive])
+  @@index([parentId])
+  @@index([deletedAt])
+  @@map("categories")
+}
+
+// ============================================
+// FINANCIAL GOAL MODEL - Metas Financeiras
+// ============================================
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model FinancialGoal {
+  id            String     @id @default(cuid())
+  name          String
+  description   String?
+  targetAmount  Float      // Valor alvo
+  currentAmount Float      @default(0)
+  
+  // Prazo
+  deadline      DateTime?
+  
+  // Categoria relacionada (opcional)
+  category      String?
+  
+  // Status
+  status        GoalStatus @default(ACTIVE)
+  
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Controle
+  isCompleted   Boolean    @default(false)
+  completedAt   DateTime?
+  
+  // Auditoria
+  deletedAt     DateTime?
+  
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  
+  @@index([userId, status])
+  @@index([userId, isCompleted])
+  @@index([deadline])
+  @@index([deletedAt])
+  @@map("financial_goals")
+}
+
+// ============================================
+// ALERT MODEL - Sistema de Alertas
+// ============================================
+
+enum AlertType {
+  BUDGET_LIMIT       // Orçamento próximo do limite
+  BUDGET_EXCEEDED    // Orçamento ultrapassado
+  LOW_BALANCE        // Saldo baixo
+  GOAL_ACHIEVED      // Meta atingida
+  GOAL_DEADLINE      // Meta próxima do prazo
+  UNUSUAL_SPENDING   // Gasto incomum
+  RECURRING_DUE      // Transação recorrente pendente
+  CUSTOM             // Alerta customizado
+}
+
+enum AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model Alert {
+  id          String        @id @default(cuid())
+  type        AlertType
+  severity    AlertSeverity @default(INFO)
+  title       String
+  message     String
+  
+  // Dados relacionados
+  relatedType String?       // "Budget", "Account", "Goal", etc
+  relatedId   String?
+  metadata    Json?         // Dados adicionais
+  
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Controle
+  isRead      Boolean       @default(false)
+  readAt      DateTime?
+  
+  createdAt   DateTime      @default(now())
+  
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+  @@index([type])
+  @@index([severity])
+  @@map("alerts")
+}
+
+// ============================================
+// RECURRING TRANSACTION MODEL - Transações Recorrentes
+// ============================================
+
+enum RecurrenceFrequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  BIMONTHLY
+  QUARTERLY
+  SEMIANNUALLY
+  YEARLY
+}
+
+model RecurringTransaction {
+  id          String              @id @default(cuid())
+  
+  // Template da transação
+  entryType   String              // "Receita" ou "Despesa"
+  flowType    String              // "Fixa" ou "Variável"
+  category    String
+  subcategory String?
+  description String
+  amount      Float
+  accountId   String?
+  
+  // Recorrência
+  frequency   RecurrenceFrequency
+  interval    Int                 @default(1) // A cada X períodos
+  startDate   DateTime
+  endDate     DateTime?           // Null = sem fim
+  
+  // Controle de execução
+  nextDate    DateTime            // Próxima execução
+  lastDate    DateTime?           // Última execução
+  
+  // Controle
+  isActive    Boolean             @default(true)
+  
+  userId      String
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Auditoria
+  deletedAt   DateTime?
+  
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  
+  @@index([userId, isActive])
+  @@index([userId, nextDate])
+  @@index([nextDate, isActive])
+  @@index([deletedAt])
+  @@map("recurring_transactions")
+}
+
+// ============================================
+// AUDIT LOG MODEL - Auditoria de Segurança
+// ============================================
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String   // ex: "CREATE", "UPDATE", "DELETE", "LOGIN"
+  resource    String   // ex: "Transaction", "Account", "Budget"
+  resourceId  String?  // ID do recurso afetado
+  
+  // Detalhes da mudança
+  oldValues   Json?    // Valores antes da alteração
+  newValues   Json?    // Valores depois da alteração
+  metadata    Json?    // Metadados extras (headers, query params)
+  
+  // Rastreamento
+  ip          String?
+  userAgent   String?
+  method      String?  // GET, POST, PUT, DELETE
+  path        String?  // URL acessada
+  statusCode  Int?     // Status da resposta
+  duration    Int?     // Tempo de execução em ms
+  
+  createdAt   DateTime @default(now())
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId, action])
+  @@index([resource, resourceId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

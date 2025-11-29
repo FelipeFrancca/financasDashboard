@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
-import { verifyAccessToken } from "../services/authService";
+import { verifyAccessToken } from "../services/autenticacaoServico";
+import { AuthenticationError, ForbiddenError } from "../utils/AppError";
+import { logger } from "../utils/logger";
 
 export interface AuthRequest extends Request {
   user: {
@@ -8,25 +10,41 @@ export interface AuthRequest extends Request {
   };
 }
 
+/**
+ * Middleware de autenticação obrigatória
+ * Verifica se o token JWT é válido
+ */
 export function authenticateToken(req: AuthRequest, res: Response, next: NextFunction): void {
-  const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
-
-  if (!token) {
-    res.status(401).json({ error: "Token não fornecido" });
-    return;
-  }
-
   try {
-    const payload = verifyAccessToken(token);
-    req.user = payload;
-    next();
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+
+    if (!token) {
+      throw new AuthenticationError("Token de autenticação não fornecido");
+    }
+
+    try {
+      const payload = verifyAccessToken(token);
+      req.user = payload;
+      next();
+    } catch (error) {
+      logger.warn("Token inválido ou expirado", "Auth", {
+        ip: req.ip,
+        path: req.path,
+        error: (error as Error).message,
+      });
+      throw new ForbiddenError("Token inválido ou expirado");
+    }
   } catch (error) {
-    res.status(403).json({ error: "Token inválido ou expirado" });
-    return;
+    next(error);
   }
 }
 
+/**
+ * Middleware de autenticação opcional
+ * Se houver token, valida e anexa ao request
+ * Se não houver ou for inválido, continua sem autenticação
+ */
 export function optionalAuth(req: AuthRequest, res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.split(" ")[1];
@@ -37,6 +55,9 @@ export function optionalAuth(req: AuthRequest, res: Response, next: NextFunction
       req.user = payload;
     } catch (error) {
       // Token invalid, but continue without authentication
+      logger.debug("Token opcional inválido, continuando sem auth", "Auth", {
+        error: (error as Error).message,
+      });
     }
   }
 

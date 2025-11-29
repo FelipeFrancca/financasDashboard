@@ -11,10 +11,11 @@ import {
   Typography,
   Link,
   Divider,
-  Alert,
   InputAdornment,
   IconButton,
   CircularProgress,
+  FormControlLabel,
+  Checkbox,
 } from "@mui/material";
 import {
   Visibility,
@@ -23,6 +24,7 @@ import {
   AccountBalance as AccountBalanceIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
+import { showError, showWarning } from "../utils/notifications";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -43,19 +45,27 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { login, register } = useAuth();
+  const { login, register, isAuthenticated, isLoading: authLoading } = useAuth();
 
   const [tab, setTab] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // Redirect authenticated users to dashboard
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate("/dashboards", { replace: true });
+    }
+  }, [isAuthenticated, authLoading, navigate]);
 
   // Check for Google OAuth error
   useEffect(() => {
     const googleError = searchParams.get("error");
     if (googleError === "google_auth_failed") {
-      setError(
-        "Falha na autenticação com Google. Verifique se as credenciais OAuth estão configuradas corretamente no arquivo .env do backend. Consulte GOOGLE_OAUTH_SETUP.md para instruções."
+      showError(
+        "Falha na autenticação com Google. Verifique se as credenciais OAuth estão configuradas corretamente no arquivo .env do backend.",
+        { title: "Erro de Autenticação" }
       );
     }
   }, [searchParams]);
@@ -70,23 +80,21 @@ export default function LoginPage() {
   const [registerPassword, setRegisterPassword] = useState("");
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState("");
 
-  const from = (location.state as any)?.from?.pathname || "/";
+  const from = (location.state as any)?.from?.pathname || "/dashboards";
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTab(newValue);
-    setError(null);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
     setIsLoading(true);
 
     try {
-      await login(loginEmail, loginPassword);
+      await login(loginEmail, loginPassword, rememberMe);
       navigate(from, { replace: true });
     } catch (err: any) {
-      setError(err.response?.data?.error || "Erro ao fazer login");
+      showError(err, { title: "Erro ao Fazer Login" });
     } finally {
       setIsLoading(false);
     }
@@ -94,15 +102,27 @@ export default function LoginPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
 
     if (registerPassword !== registerConfirmPassword) {
-      setError("As senhas não coincidem");
+      showWarning("As senhas não coincidem", { title: "Validação" });
       return;
     }
 
-    if (registerPassword.length < 6) {
-      setError("A senha deve ter pelo menos 6 caracteres");
+    if (registerPassword.length < 8) {
+      showWarning("A senha deve ter pelo menos 8 caracteres", { title: "Validação" });
+      return;
+    }
+
+    // Validação de senha: deve conter maiúscula, minúscula e número
+    const hasUpperCase = /[A-Z]/.test(registerPassword);
+    const hasLowerCase = /[a-z]/.test(registerPassword);
+    const hasNumber = /\d/.test(registerPassword);
+
+    if (!hasUpperCase || !hasLowerCase || !hasNumber) {
+      showWarning(
+        "A senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número",
+        { title: "Validação" }
+      );
       return;
     }
 
@@ -112,14 +132,15 @@ export default function LoginPage() {
       await register(registerEmail, registerPassword, registerName);
       navigate(from, { replace: true });
     } catch (err: any) {
-      setError(err.response?.data?.error || "Erro ao criar conta");
+      showError(err, { title: "Erro ao Criar Conta" });
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleGoogleLogin = () => {
-    window.location.href = "http://localhost:5000/api/auth/google";
+    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    window.location.href = `${apiUrl}/api/auth/google`;
   };
 
   return (
@@ -144,13 +165,6 @@ export default function LoginPage() {
                 Gerencie suas finanças pessoais com facilidade
               </Typography>
             </Box>
-
-            {/* Error Alert */}
-            {error && (
-              <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-                {error}
-              </Alert>
-            )}
 
             {/* Tabs */}
             <Tabs value={tab} onChange={handleTabChange} variant="fullWidth" sx={{ mb: 2 }}>
@@ -202,6 +216,18 @@ export default function LoginPage() {
                   </Link>
                 </Box>
 
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      value="remember"
+                      color="primary"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                    />
+                  }
+                  label="Permanecer conectado"
+                />
+
                 <Button
                   type="submit"
                   fullWidth
@@ -245,7 +271,7 @@ export default function LoginPage() {
                   required
                   margin="normal"
                   autoComplete="new-password"
-                  helperText="Mínimo de 6 caracteres"
+                  helperText="Mínimo 8 caracteres, incluindo maiúscula, minúscula e número"
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -271,7 +297,7 @@ export default function LoginPage() {
                   }
                   helperText={
                     registerConfirmPassword.length > 0 &&
-                    registerPassword !== registerConfirmPassword
+                      registerPassword !== registerConfirmPassword
                       ? "As senhas não coincidem"
                       : ""
                   }

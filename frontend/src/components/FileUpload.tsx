@@ -1,9 +1,10 @@
 import { Card, CardHeader, CardContent, Button, Typography, Box } from '@mui/material';
-import { CloudUpload, FileDownload } from '@mui/icons-material';
+import CloudUpload from '@mui/icons-material/CloudUpload';
+import FileDownload from '@mui/icons-material/FileDownload';
 import { useRef } from 'react';
 import Papa from 'papaparse';
-import Swal from 'sweetalert2';
 import type { Transaction } from '../types';
+import { showError } from '../utils/notifications';
 
 interface FileUploadProps {
   onImport: (transactions: Partial<Transaction>[]) => void;
@@ -42,11 +43,7 @@ export default function FileUpload({ onImport }: FileUploadProps) {
 
           onImport(transactions);
         } catch (error) {
-          Swal.fire({
-            icon: 'error',
-            title: 'Erro',
-            text: 'Não foi possível processar o arquivo CSV.',
-          });
+          showError(error, { title: 'Erro', text: 'Não foi possível processar o arquivo CSV.' });
         }
       },
     });

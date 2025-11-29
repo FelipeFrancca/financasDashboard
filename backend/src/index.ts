@@ -5,57 +5,46 @@ import passport from "passport";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
 import path from "path";
-import transactionRoutes from "./routes/transactions";
-import authRoutes from "./routes/auth";
-import dashboardRoutes from "./routes/dashboards";
+
+// Rotas (Novo Padrão em Português)
+import transacoesRotas from "./routes/transacoesRotas";
+import authRoutes from "./routes/autenticacaoRotas";
+import paineisRotas from "./routes/paineisRotas";
+import contasRotas from "./routes/contasRotas";
+import transferenciasRotas from "./routes/transferenciasRotas";
+import orcamentosRotas from "./routes/orcamentosRotas";
+import categoriasRotas from "./routes/categoriasRotas";
+import metasRotas from "./routes/metasRotas";
+import alertasRotas from "./routes/alertasRotas";
+import recorrenciaRotas from "./routes/recorrenciaRotas";
+
+// Middlewares e Utils
+import { logger } from "./utils/logger";
+import {
+  errorHandler,
+  notFoundHandler,
+  setupGlobalErrorHandlers
+} from "./middleware/errorHandler";
+import { requestLogger, slowRequestLogger } from "./middleware/requestLogger";
+import { generalLimiter } from "./middleware/rateLimiter";
+import { openApiConfig } from "./config/openapi";
+import { auditMiddleware } from "./middleware/audit";
 
 const app: Application = express();
 const PORT = process.env.PORT || 3001;
 
+// Setup de handlers globais
+setupGlobalErrorHandlers();
+
 // Swagger configuration
 const swaggerOptions = {
-  definition: {
-    openapi: "3.0.0",
-    info: {
-      title: "Finanças Dashboard API",
-      version: "1.0.0",
-      description: "API REST para gerenciamento de finanças pessoais",
-      contact: {
-        name: "API Support",
-      },
-    },
-    servers: [
-      {
-        url: `http://localhost:${PORT}`,
-        description: "Development server",
-      },
-    ],
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: "http",
-          scheme: "bearer",
-          bearerFormat: "JWT",
-        },
-      },
-    },
-    tags: [
-      {
-        name: "Auth",
-        description: "Operações de autenticação e gerenciamento de usuários",
-      },
-      {
-        name: "Transactions",
-        description: "Operações relacionadas a transações financeiras",
-      },
-    ],
-  },
+  definition: openApiConfig,
   apis: ["./src/routes/*.ts"],
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
-// Middlewares
+// Middlewares básicos
 app.use(helmet({
   contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
     directives: {
@@ -69,73 +58,130 @@ app.use(helmet({
       mediaSrc: ["'self'"],
       frameSrc: ["'none'"],
     },
-  } : false, // Desabilita CSP em desenvolvimento
+  } : false,
 }));
+
+// CORS Configuration - Suporta múltiplas origens
+const allowedOrigins = process.env.CORS_ORIGINS
+  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+  : ['http://localhost:3000', 'http://localhost:5173'];
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN,
+  origin: (origin, callback) => {
+    // Permite requisições sem origin (como mobile apps, curl, postman)
+    if (!origin) return callback(null, true);
+
+    // Verifica se a origem está na lista de permitidas
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
 }));
+
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(passport.initialize());
 
-// API Documentation
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: ".swagger-ui .topbar { display: none }",
-  customSiteTitle: "Finanças Dashboard API"
-}));
+// Logging e Monitoramento
+app.use(requestLogger);
+app.use(slowRequestLogger(1000));
 
-// Routes
-app.use("/api/auth", authRoutes);
-app.use("/api/transactions", transactionRoutes);
-app.use("/api/dashboards", dashboardRoutes);
+// Auditoria Global (intercepta POST/PUT/DELETE)
+app.use('/api', auditMiddleware('General'));
 
-// Health check
-app.get("/health", (_req, res) => {
-  res.json({ 
-    status: "OK", 
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV
-  });
+// Rate limiting
+app.use('/api/', generalLimiter);
+
+// Documentação API
+app.get("/api-docs/json", (req, res) => {
+  res.setHeader("Content-Type", "application/json");
+  res.send(swaggerSpec);
 });
 
-// Servir arquivos estáticos do frontend em produção
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: `.swagger-ui .topbar { display: none }
+    .swagger-ui .info { margin: 50px 0; }
+    .swagger-ui .scheme-container { background: #fafafa; padding: 20px; }`,
+  customSiteTitle: "Finanças Dashboard API",
+  customfavIcon: "/favicon.ico",
+  swaggerOptions: {
+    persistAuthorization: true,
+    filter: true,
+    displayRequestDuration: true,
+  },
+}));
+
+// Definição das Rotas
+app.use("/api/auth", authRoutes);
+app.use("/api/transactions", transacoesRotas);
+app.use("/api/dashboards", paineisRotas);
+app.use("/api/accounts", contasRotas);
+app.use("/api/transfers", transferenciasRotas);
+app.use("/api/budgets", orcamentosRotas);
+app.use("/api/categories", categoriasRotas);
+app.use("/api/goals", metasRotas);
+app.use("/api/alerts", alertasRotas);
+app.use("/api/recurrences", recorrenciaRotas);
+
+// Health check
+app.get("/health", async (_req, res) => {
+  try {
+    const { PrismaClient } = await import("@prisma/client");
+    const prisma = new PrismaClient();
+    await prisma.$queryRaw`SELECT 1`;
+    await prisma.$disconnect();
+
+    const uptime = process.uptime();
+    const memoryUsage = process.memoryUsage();
+
+    res.json({
+      status: "OK",
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      uptime: `${Math.floor(uptime / 60)}m ${Math.floor(uptime % 60)}s`,
+      memory: {
+        rss: `${Math.round(memoryUsage.rss / 1024 / 1024)}MB`,
+        heapUsed: `${Math.round(memoryUsage.heapUsed / 1024 / 1024)}MB`,
+      },
+      database: "connected",
+      version: "1.0.0",
+    });
+  } catch (error) {
+    logger.error("Health check failed", error as Error, "HealthCheck");
+    res.status(503).json({
+      status: "ERROR",
+      timestamp: new Date().toISOString(),
+      database: "disconnected",
+      error: "Service unavailable",
+    });
+  }
+});
+
+// Static files (Production)
 const isProduction = process.env.NODE_ENV === "production";
 if (isProduction) {
   const publicPath = path.join(__dirname, "..", "public");
-  
-  // Servir arquivos estáticos
   app.use(express.static(publicPath));
-  
-  // SPA fallback - todas as rotas não-API retornam index.html
   app.get("*", (_req, res) => {
     res.sendFile(path.join(publicPath, "index.html"));
   });
 }
 
-// 404 handler para desenvolvimento (não chegará aqui em produção por causa do "*")
+// Error Handling
 if (!isProduction) {
-  app.use((_req, res) => {
-    res.status(404).json({ 
-      error: "Not Found", 
-      message: "A rota solicitada não foi encontrada" 
-    });
-  });
+  app.use(notFoundHandler);
 }
+app.use(errorHandler);
 
-// Error handler
-app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  console.error("Error:", err);
-  res.status(500).json({ 
-    error: "Internal Server Error", 
-    message: err.message 
-  });
-});
-
+// Start Server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📚 API Documentation: http://localhost:${PORT}/api-docs`);
-  console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+  logger.info(`🚀 Server running on http://localhost:${PORT}`, 'Server');
+  logger.info(`📚 API Documentation: http://localhost:${PORT}/api-docs`, 'Server');
+  logger.info(`🏥 Health check: http://localhost:${PORT}/health`, 'Server');
+  logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`, 'Server');
 });
 
 export default app;
