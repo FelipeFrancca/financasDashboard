@@ -17,6 +17,9 @@ RUN bun install --frozen-lockfile
 
 COPY frontend/ ./
 
+# Define VITE_API_URL como vazio para usar URL relativa (mesma origem)
+ENV VITE_API_URL=""
+
 RUN bun run build
 
 # =============================================================================
@@ -62,7 +65,8 @@ RUN printf '#!/bin/sh\nset -e\n\nif [ -z "$DATABASE_URL" ]; then\n  echo "ERROR:
 
 EXPOSE 5000
 
-ENV NODE_ENV=production PORT=5000 CORS_ORIGIN=* JWT_EXPIRES_IN=7d JWT_REFRESH_EXPIRES_IN=30d
+# Não define CORS_ORIGIN aqui - deve vir do docker-compose/ambiente
+ENV NODE_ENV=production PORT=5000 JWT_EXPIRES_IN=7d JWT_REFRESH_EXPIRES_IN=30d
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD bun run -e "fetch('http://localhost:5000/health').then(r => r.status === 200 ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
 

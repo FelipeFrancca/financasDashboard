@@ -1,7 +1,10 @@
 import axios from 'axios';
 import type { Transaction, TransactionFilters, StatsSummary } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+// Use URL relativa quando VITE_API_URL não está definida (produção)
+const API_BASE_URL = import.meta.env.VITE_API_URL === undefined || import.meta.env.VITE_API_URL === '' 
+  ? '' 
+  : import.meta.env.VITE_API_URL;
 
 const api = axios.create({
   baseURL: `${API_BASE_URL}/api`,

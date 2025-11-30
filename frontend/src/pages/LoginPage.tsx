@@ -147,7 +147,10 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = () => {
-    const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
+    // Use URL relativa quando VITE_API_URL não está definida (produção)
+    const apiUrl = import.meta.env.VITE_API_URL === undefined || import.meta.env.VITE_API_URL === '' 
+      ? '' 
+      : import.meta.env.VITE_API_URL;
     window.location.href = `${apiUrl}/api/auth/google`;
   };
 

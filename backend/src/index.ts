@@ -46,40 +46,37 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
 
 // Middlewares básicos
 app.use(helmet({
-  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'"],
-      fontSrc: ["'self'"],
-      objectSrc: ["'none'"],
-      mediaSrc: ["'self'"],
-      frameSrc: ["'none'"],
-    },
-  } : false,
+  contentSecurityPolicy: false, // Desabilita CSP em produção para evitar conflitos com SPA
+  crossOriginEmbedderPolicy: false,
 }));
 
 // CORS Configuration - Suporta múltiplas origens
-const allowedOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
-  : ['http://localhost:3000', 'http://localhost:5173'];
+const corsOrigin = process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || 'http://localhost:5173';
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Permite requisições sem origin (como mobile apps, curl, postman)
-    if (!origin) return callback(null, true);
+// Se CORS_ORIGIN for *, permite todas as origens
+if (corsOrigin === '*') {
+  app.use(cors({
+    origin: true,
+    credentials: true,
+  }));
+} else {
+  const allowedOrigins = corsOrigin.split(',').map(origin => origin.trim());
+  
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Permite requisições sem origin (como mobile apps, curl, postman, ou requisições do mesmo domínio)
+      if (!origin) return callback(null, true);
 
-    // Verifica se a origem está na lista de permitidas
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-}));
+      // Verifica se a origem está na lista de permitidas
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    credentials: true,
+  }));
+}
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
@@ -164,8 +161,19 @@ app.get("/health", async (_req, res) => {
 const isProduction = process.env.NODE_ENV === "production";
 if (isProduction) {
   const publicPath = path.join(__dirname, "..", "public");
-  app.use(express.static(publicPath));
-  app.get("*", (_req, res) => {
+  
+  // Serve arquivos estáticos com cache
+  app.use(express.static(publicPath, {
+    maxAge: '1y',
+    etag: true,
+  }));
+  
+  // Catch-all apenas para rotas não-API (SPA fallback)
+  app.get("*", (req, res, next) => {
+    // Se for uma rota de API, passa para o próximo handler
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
     res.sendFile(path.join(publicPath, "index.html"));
   });
 }

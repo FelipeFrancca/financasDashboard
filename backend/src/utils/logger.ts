@@ -38,14 +38,22 @@ class Logger {
     private static instance: Logger;
     private logsDir: string;
     private isDevelopment: boolean;
+    private canWriteToFile: boolean = false;
 
     private constructor() {
         this.isDevelopment = process.env.NODE_ENV !== 'production';
         this.logsDir = path.join(process.cwd(), 'logs');
 
         // Criar diretório de logs se não existir
-        if (!fs.existsSync(this.logsDir)) {
-            fs.mkdirSync(this.logsDir, { recursive: true });
+        try {
+            if (!fs.existsSync(this.logsDir)) {
+                fs.mkdirSync(this.logsDir, { recursive: true });
+            }
+            this.canWriteToFile = true;
+        } catch (error) {
+            // Em produção, se não puder criar o diretório, apenas loga no console
+            console.warn('⚠️  Diretório de logs não disponível. Logs serão apenas no console.');
+            this.canWriteToFile = false;
         }
     }
 
@@ -101,6 +109,11 @@ class Logger {
      * Escreve log em arquivo
      */
     private logToFile(entry: LogEntry): void {
+        // Se não puder escrever em arquivo, apenas retorna
+        if (!this.canWriteToFile) {
+            return;
+        }
+
         const date = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
         const filename = `${entry.level}-${date}.log`;
         const filepath = path.join(this.logsDir, filename);
@@ -132,9 +145,14 @@ class Logger {
             this.logToConsole(entry);
         }
 
-        // Loga em arquivo em produção ou erros
+        // Loga em arquivo em produção ou erros (se disponível)
         if (!this.isDevelopment || level === LogLevel.ERROR || level === LogLevel.WARN) {
-            this.logToFile(entry);
+            if (this.canWriteToFile) {
+                this.logToFile(entry);
+            } else if (!this.isDevelopment) {
+                // Se não puder escrever em arquivo em produção, usa console
+                this.logToConsole(entry);
+            }
         }
     }
 
