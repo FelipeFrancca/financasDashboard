@@ -1,4 +1,4 @@
-import { Grid, Card, CardContent, Typography, Box } from '@mui/material';
+import { Grid, Card, CardContent, Typography, Box, Skeleton } from '@mui/material';
 import TrendingUp from '@mui/icons-material/TrendingUp';
 import TrendingDown from '@mui/icons-material/TrendingDown';
 import AccountBalance from '@mui/icons-material/AccountBalance';
@@ -8,10 +8,31 @@ import type { StatsSummary, Transaction } from '../types';
 interface MetricsCardsProps {
   stats?: StatsSummary;
   transactions: Transaction[];
+  isLoading?: boolean;
 }
 
-export default function MetricsCards({ stats }: MetricsCardsProps) {
-  if (!stats) return null;
+export default function MetricsCards({ stats, isLoading = false }: MetricsCardsProps) {
+  // Se estiver carregando ou não tiver stats, mostra skeleton
+  if (isLoading || !stats) {
+    return (
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        {[1, 2, 3, 4].map((item) => (
+          <Grid item xs={12} sm={6} lg={3} key={item}>
+            <Card sx={{ height: '100%', borderLeft: 3, borderColor: 'divider' }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
+                  <Skeleton variant="text" width={100} />
+                  <Skeleton variant="circular" width={28} height={28} />
+                </Box>
+                <Skeleton variant="rectangular" height={40} width="80%" />
+                <Skeleton variant="text" width={80} sx={{ mt: 1 }} />
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
+    );
+  }
 
   const metrics = [
     {

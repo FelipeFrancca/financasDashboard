@@ -33,9 +33,9 @@ import AddIcon from '@mui/icons-material/Add';
 import ShareIcon from '@mui/icons-material/Share';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { dashboardService } from '../services/api';
 import ShareDialog from '../components/ShareDialog';
 import ShortcutsModal from '../components/ShortcutsModal';
+import { useDashboards, useCreateDashboard } from '../hooks/api/useDashboards';
 
 interface HomePageProps {
   mode: 'light' | 'dark';
@@ -52,26 +52,15 @@ export default function HomePage({ mode, onToggleTheme }: HomePageProps) {
   const [tabValue, setTabValue] = useState(0);
 
   // Dashboard management
-  const [dashboards, setDashboards] = useState<any[]>([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareDashboard, setShareDashboard] = useState<any>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
 
-  // Load dashboards
-  const loadDashboards = async () => {
-    try {
-      const data = await dashboardService.list();
-      setDashboards(data);
-    } catch (error) {
-      console.error('Error loading dashboards:', error);
-    }
-  };
-
-  useEffect(() => {
-    loadDashboards();
-  }, []);
+  // Hooks
+  const { data: dashboards = [] } = useDashboards();
+  const createDashboardMutation = useCreateDashboard();
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -106,11 +95,10 @@ export default function HomePage({ mode, onToggleTheme }: HomePageProps) {
 
   const handleCreateDashboard = async () => {
     try {
-      await dashboardService.create(title, description);
+      await createDashboardMutation.mutateAsync({ title, description });
       setCreateDialogOpen(false);
       setTitle('');
       setDescription('');
-      await loadDashboards();
     } catch (error) {
       console.error('Error creating dashboard:', error);
     }
@@ -127,8 +115,8 @@ export default function HomePage({ mode, onToggleTheme }: HomePageProps) {
   };
 
   // Separa dashboards owned e shared
-  const ownedDashboards = dashboards.filter(d => d.isOwner);
-  const sharedDashboards = dashboards.filter(d => !d.isOwner);
+  const ownedDashboards = dashboards.filter((d: any) => d.isOwner);
+  const sharedDashboards = dashboards.filter((d: any) => !d.isOwner);
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -249,7 +237,7 @@ export default function HomePage({ mode, onToggleTheme }: HomePageProps) {
               </Card>
             ) : (
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 3 }}>
-                {ownedDashboards.map((d) => (
+                {ownedDashboards.map((d: any) => (
                   <Card
                     key={d.id}
                     sx={{
@@ -325,7 +313,7 @@ export default function HomePage({ mode, onToggleTheme }: HomePageProps) {
               </Card>
             ) : (
               <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }, gap: 3 }}>
-                {sharedDashboards.map((d) => (
+                {sharedDashboards.map((d: any) => (
                   <Card
                     key={d.id}
                     sx={{

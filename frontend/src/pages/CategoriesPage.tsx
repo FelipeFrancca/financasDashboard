@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
     Box,
     Container,
-    Typography,
     Button,
     Card,
     CardContent,
@@ -21,10 +20,15 @@ import {
     MenuItem,
     Chip,
 } from '@mui/material';
-import { Add, Edit, Delete } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
-import { categoryService } from '../services/api';
+import { Edit, Delete } from '@mui/icons-material';
+import PageHeader from '../components/PageHeader';
 import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import {
+    useCategories,
+    useCreateCategory,
+    useUpdateCategory,
+    useDeleteCategory
+} from '../hooks/api/useCategories';
 
 export default function CategoriesPage() {
     const [open, setOpen] = useState(false);
@@ -36,10 +40,11 @@ export default function CategoriesPage() {
         icon: '',
     });
 
-    const { data: categories = [], refetch } = useQuery({
-        queryKey: ['categories'],
-        queryFn: categoryService.getAll,
-    });
+    // Hooks
+    const { data: categories = [] } = useCategories();
+    const createCategory = useCreateCategory();
+    const updateCategory = useUpdateCategory();
+    const deleteCategory = useDeleteCategory();
 
     // Normalize type values from backend (can be "Receita"/"Despesa" or "INCOME"/"EXPENSE")
     const normalizeType = (type: string) => {
@@ -78,12 +83,11 @@ export default function CategoriesPage() {
             };
 
             if (editingCategory) {
-                await categoryService.update(editingCategory.id, dataToSend);
+                await updateCategory.mutateAsync({ id: editingCategory.id, data: dataToSend });
             } else {
-                await categoryService.create(dataToSend);
+                await createCategory.mutateAsync(dataToSend);
             }
             setOpen(false);
-            refetch();
             showSuccess(`Categoria ${editingCategory ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
         } catch (error) {
             showError(error, { title: 'Erro', text: 'Não foi possível salvar a categoria.' });
@@ -103,8 +107,7 @@ export default function CategoriesPage() {
 
         if (result.isConfirmed) {
             try {
-                await categoryService.delete(id);
-                refetch();
+                await deleteCategory.mutateAsync(id);
                 showSuccess('A categoria foi excluída.', { title: 'Excluído!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível excluir a categoria.' });
@@ -114,14 +117,15 @@ export default function CategoriesPage() {
 
     return (
         <Container maxWidth="lg">
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                <Typography variant="h4" fontWeight={700}>
-                    Categorias
-                </Typography>
-                <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>
-                    Nova Categoria
-                </Button>
-            </Box>
+            <PageHeader
+                title="Categorias"
+                breadcrumbs={[
+                    { label: 'Dashboards', to: '/dashboards' },
+                    { label: 'Categorias' }
+                ]}
+                actionLabel="Nova Categoria"
+                onAction={() => handleOpen()}
+            />
 
             <Card>
                 <CardContent>

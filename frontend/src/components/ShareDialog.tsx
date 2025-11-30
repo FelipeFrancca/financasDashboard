@@ -18,6 +18,7 @@ import {
 import ContentCopy from '@mui/icons-material/ContentCopy';
 import { dashboardService } from '../services/api';
 import { showSuccess, showError } from '../utils/notifications';
+import { useForm, Controller } from 'react-hook-form';
 
 interface ShareDialogProps {
   open: boolean;
@@ -26,18 +27,33 @@ interface ShareDialogProps {
   dashboardTitle: string;
 }
 
+interface ShareFormData {
+  role: 'VIEWER' | 'EDITOR';
+  expiresInDays: string;
+  isOneTime: string; // 'multiple' | 'one-time'
+}
+
 export default function ShareDialog({ open, onClose, dashboardId, dashboardTitle }: ShareDialogProps) {
-  const [role, setRole] = useState<'VIEWER' | 'EDITOR'>('VIEWER');
-  const [expiresInDays, setExpiresInDays] = useState('');
-  const [isOneTime, setIsOneTime] = useState(false);
   const [shareLink, setShareLink] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleGenerate = async () => {
+  const { control, handleSubmit, reset } = useForm<ShareFormData>({
+    defaultValues: {
+      role: 'VIEWER',
+      expiresInDays: '',
+      isOneTime: 'multiple',
+    }
+  });
+
+  const handleGenerate = async (data: ShareFormData) => {
     try {
       setLoading(true);
-      const expiresAt = expiresInDays ? new Date(Date.now() + parseInt(expiresInDays) * 24 * 60 * 60 * 1000).toISOString() : undefined;
-      const result = await dashboardService.createInvite(dashboardId, { role, expiresAt, isOneTime });
+      const expiresAt = data.expiresInDays ? new Date(Date.now() + parseInt(data.expiresInDays) * 24 * 60 * 60 * 1000).toISOString() : undefined;
+      const result = await dashboardService.createInvite(dashboardId, {
+        role: data.role,
+        expiresAt,
+        isOneTime: data.isOneTime === 'one-time'
+      });
       setShareLink(result.shareLink);
     } catch (error: any) {
       showError(error, { title: 'Erro', text: 'Erro ao gerar link de compartilhamento' });
@@ -53,9 +69,7 @@ export default function ShareDialog({ open, onClose, dashboardId, dashboardTitle
 
   const handleClose = () => {
     setShareLink('');
-    setRole('VIEWER');
-    setExpiresInDays('');
-    setIsOneTime(false);
+    reset();
     onClose();
   };
 
@@ -67,33 +81,50 @@ export default function ShareDialog({ open, onClose, dashboardId, dashboardTitle
           {dashboardTitle}
         </Typography>
 
-        <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <FormControl fullWidth>
-            <InputLabel>Permissão</InputLabel>
-            <Select value={role} onChange={(e) => setRole(e.target.value as 'VIEWER' | 'EDITOR')} label="Permissão">
-              <MenuItem value="VIEWER">Visualizador</MenuItem>
-              <MenuItem value="EDITOR">Editor</MenuItem>
-            </Select>
-          </FormControl>
-
-          <TextField
-            label="Expira em (dias)"
-            type="number"
-            value={expiresInDays}
-            onChange={(e) => setExpiresInDays(e.target.value)}
-            helperText="Deixe vazio para não expirar"
-            fullWidth
+        <Box component="form" onSubmit={handleSubmit(handleGenerate)} sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Controller
+            name="role"
+            control={control}
+            render={({ field }) => (
+              <FormControl fullWidth>
+                <InputLabel>Permissão</InputLabel>
+                <Select {...field} label="Permissão">
+                  <MenuItem value="VIEWER">Visualizador</MenuItem>
+                  <MenuItem value="EDITOR">Editor</MenuItem>
+                </Select>
+              </FormControl>
+            )}
           />
 
-          <FormControl fullWidth>
-            <InputLabel>Tipo de convite</InputLabel>
-            <Select value={isOneTime ? 'one-time' : 'multiple'} onChange={(e) => setIsOneTime(e.target.value === 'one-time')} label="Tipo de convite">
-              <MenuItem value="multiple">Múltiplos usos</MenuItem>
-              <MenuItem value="one-time">Uso único</MenuItem>
-            </Select>
-          </FormControl>
+          <Controller
+            name="expiresInDays"
+            control={control}
+            render={({ field }) => (
+              <TextField
+                {...field}
+                label="Expira em (dias)"
+                type="number"
+                helperText="Deixe vazio para não expirar"
+                fullWidth
+              />
+            )}
+          />
 
-          <Button variant="contained" onClick={handleGenerate} disabled={loading} fullWidth>
+          <Controller
+            name="isOneTime"
+            control={control}
+            render={({ field }) => (
+              <FormControl fullWidth>
+                <InputLabel>Tipo de convite</InputLabel>
+                <Select {...field} label="Tipo de convite">
+                  <MenuItem value="multiple">Múltiplos usos</MenuItem>
+                  <MenuItem value="one-time">Uso único</MenuItem>
+                </Select>
+              </FormControl>
+            )}
+          />
+
+          <Button type="submit" variant="contained" disabled={loading} fullWidth>
             {shareLink ? 'Gerar Novo Link' : 'Gerar Link'}
           </Button>
 

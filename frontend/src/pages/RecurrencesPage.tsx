@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
     Box,
     Container,
-    Typography,
     Button,
     Card,
     CardContent,
@@ -21,37 +20,54 @@ import {
     MenuItem,
     Chip,
 } from '@mui/material';
-import { Add, Edit, Delete } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
-import { recurrenceService, categoryService } from '../services/api';
+import { Edit, Delete } from '@mui/icons-material';
+import PageHeader from '../components/PageHeader';
 import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import { useForm, Controller } from 'react-hook-form';
+import {
+    useRecurrences,
+    useCreateRecurrence,
+    useUpdateRecurrence,
+    useDeleteRecurrence
+} from '../hooks/api/useRecurrences';
+import { useCategories } from '../hooks/api/useCategories';
+
+interface RecurrenceFormData {
+    description: string;
+    amount: number;
+    type: 'INCOME' | 'EXPENSE';
+    categoryId: string;
+    frequency: string;
+    startDate: string;
+}
+
+const defaultValues: RecurrenceFormData = {
+    description: '',
+    amount: 0,
+    type: 'EXPENSE',
+    categoryId: '',
+    frequency: 'MONTHLY',
+    startDate: new Date().toISOString().split('T')[0],
+};
 
 export default function RecurrencesPage() {
     const [open, setOpen] = useState(false);
     const [editingRecurrence, setEditingRecurrence] = useState<any>(null);
-    const [formData, setFormData] = useState({
-        description: '',
-        amount: 0,
-        type: 'EXPENSE',
-        categoryId: '',
-        frequency: 'MONTHLY',
-        startDate: new Date().toISOString().split('T')[0],
+
+    // Hooks
+    const { data: recurrences = [] } = useRecurrences();
+    const { data: categories = [] } = useCategories();
+    const createRecurrence = useCreateRecurrence();
+    const updateRecurrence = useUpdateRecurrence();
+    const deleteRecurrence = useDeleteRecurrence();
+
+    const { control, handleSubmit, reset, watch } = useForm<RecurrenceFormData>({
+        defaultValues
     });
 
-    const { data: recurrences = [], refetch } = useQuery({
-        queryKey: ['recurrences'],
-        queryFn: recurrenceService.getAll,
-    });
-
-    const { data: categories = [] } = useQuery({
-        queryKey: ['categories'],
-        queryFn: categoryService.getAll,
-    });
-
-
+    const selectedType = watch('type');
 
     const handleOpen = (recurrence?: any) => {
-
         if (recurrence) {
             // MAPPING: Backend (entryType/category) -> Frontend (type/categoryId)
             const type = recurrence.entryType === 'Receita' ? 'INCOME' : 'EXPENSE';
@@ -61,7 +77,7 @@ export default function RecurrencesPage() {
             const categoryId = categoryObj ? categoryObj.id : '';
 
             setEditingRecurrence(recurrence);
-            setFormData({
+            reset({
                 description: recurrence.description,
                 amount: recurrence.amount,
                 type: type,
@@ -71,43 +87,35 @@ export default function RecurrencesPage() {
             });
         } else {
             setEditingRecurrence(null);
-            setFormData({
-                description: '',
-                amount: 0,
-                type: 'EXPENSE',
-                categoryId: '',
-                frequency: 'MONTHLY',
-                startDate: new Date().toISOString().split('T')[0],
-            });
+            reset(defaultValues);
         }
         setOpen(true);
     };
 
-    const handleSave = async () => {
+    const onSubmit = async (data: RecurrenceFormData) => {
         try {
             // MAPPING: Frontend (type/categoryId) -> Backend (entryType/category)
-            const entryType = formData.type === 'INCOME' ? 'Receita' : 'Despesa';
+            const entryType = data.type === 'INCOME' ? 'Receita' : 'Despesa';
 
-            const categoryObj = categories.find((c: any) => c.id === formData.categoryId);
+            const categoryObj = categories.find((c: any) => c.id === data.categoryId);
             const categoryName = categoryObj ? categoryObj.name : 'Outros';
 
             const payload = {
-                description: formData.description,
-                amount: formData.amount,
+                description: data.description,
+                amount: data.amount,
                 entryType: entryType,
                 flowType: 'Fixa', // Default value required by schema
                 category: categoryName,
-                frequency: formData.frequency,
-                startDate: new Date(formData.startDate).toISOString(),
+                frequency: data.frequency,
+                startDate: new Date(data.startDate).toISOString(),
             };
 
             if (editingRecurrence) {
-                await recurrenceService.update(editingRecurrence.id, payload);
+                await updateRecurrence.mutateAsync({ id: editingRecurrence.id, data: payload });
             } else {
-                await recurrenceService.create(payload);
+                await createRecurrence.mutateAsync(payload);
             }
             setOpen(false);
-            refetch();
             showSuccess(`Recorrência ${editingRecurrence ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
         } catch (error) {
             console.error('Error saving recurrence:', error);
@@ -128,8 +136,7 @@ export default function RecurrencesPage() {
 
         if (result.isConfirmed) {
             try {
-                await recurrenceService.delete(id);
-                refetch();
+                await deleteRecurrence.mutateAsync(id);
                 showSuccess('A recorrência foi excluída.', { title: 'Excluído!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível excluir a recorrência.' });
@@ -144,14 +151,15 @@ export default function RecurrencesPage() {
 
     return (
         <Container maxWidth="lg">
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                <Typography variant="h4" fontWeight={700}>
-                    Recorrências
-                </Typography>
-                <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>
-                    Nova Recorrência
-                </Button>
-            </Box>
+            <PageHeader
+                title="Recorrências"
+                breadcrumbs={[
+                    { label: 'Dashboards', to: '/dashboards' },
+                    { label: 'Recorrências' }
+                ]}
+                actionLabel="Nova Recorrência"
+                onAction={() => handleOpen()}
+            />
 
             <Card>
                 <CardContent>
@@ -215,78 +223,120 @@ export default function RecurrencesPage() {
             </Card>
 
             <Dialog open={open} onClose={() => setOpen(false)}>
-                <DialogTitle>{editingRecurrence ? 'Editar Recorrência' : 'Nova Recorrência'}</DialogTitle>
-                <DialogContent>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
-                        <TextField
-                            label="Descrição"
-                            fullWidth
-                            value={formData.description}
-                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        />
-                        <TextField
-                            select
-                            label="Tipo"
-                            fullWidth
-                            value={formData.type}
-                            onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                        >
-                            <MenuItem value="INCOME">Receita</MenuItem>
-                            <MenuItem value="EXPENSE">Despesa</MenuItem>
-                        </TextField>
-                        <TextField
-                            select
-                            label="Categoria"
-                            fullWidth
-                            value={formData.categoryId}
-                            onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-                        >
-                            {categories
-                                .filter((c: any) => {
-                                    // Filter categories by type
-                                    const catType = c.type === 'Receita' ? 'INCOME' : (c.type === 'Despesa' ? 'EXPENSE' : c.type);
-                                    return catType === formData.type;
-                                })
-                                .map((category: any) => (
-                                    <MenuItem key={category.id} value={category.id}>
-                                        {category.name}
-                                    </MenuItem>
-                                ))}
-                        </TextField>
-                        <TextField
-                            select
-                            label="Frequência"
-                            fullWidth
-                            value={formData.frequency}
-                            onChange={(e) => setFormData({ ...formData, frequency: e.target.value })}
-                        >
-                            <MenuItem value="WEEKLY">Semanal</MenuItem>
-                            <MenuItem value="MONTHLY">Mensal</MenuItem>
-                            <MenuItem value="YEARLY">Anual</MenuItem>
-                        </TextField>
-                        <TextField
-                            label="Valor"
-                            type="number"
-                            fullWidth
-                            value={formData.amount}
-                            onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
-                        />
-                        <TextField
-                            label="Data de Início"
-                            type="date"
-                            fullWidth
-                            value={formData.startDate}
-                            onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                            InputLabelProps={{ shrink: true }}
-                        />
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleSave}>
-                        Salvar
-                    </Button>
-                </DialogActions>
+                <form onSubmit={handleSubmit(onSubmit)}>
+                    <DialogTitle>{editingRecurrence ? 'Editar Recorrência' : 'Nova Recorrência'}</DialogTitle>
+                    <DialogContent>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
+                            <Controller
+                                name="description"
+                                control={control}
+                                rules={{ required: 'Descrição é obrigatória' }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Descrição"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="type"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        select
+                                        label="Tipo"
+                                        fullWidth
+                                    >
+                                        <MenuItem value="INCOME">Receita</MenuItem>
+                                        <MenuItem value="EXPENSE">Despesa</MenuItem>
+                                    </TextField>
+                                )}
+                            />
+                            <Controller
+                                name="categoryId"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        select
+                                        label="Categoria"
+                                        fullWidth
+                                    >
+                                        {categories
+                                            .filter((c: any) => {
+                                                // Filter categories by type
+                                                const catType = c.type === 'Receita' ? 'INCOME' : (c.type === 'Despesa' ? 'EXPENSE' : c.type);
+                                                return catType === selectedType;
+                                            })
+                                            .map((category: any) => (
+                                                <MenuItem key={category.id} value={category.id}>
+                                                    {category.name}
+                                                </MenuItem>
+                                            ))}
+                                    </TextField>
+                                )}
+                            />
+                            <Controller
+                                name="frequency"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        select
+                                        label="Frequência"
+                                        fullWidth
+                                    >
+                                        <MenuItem value="WEEKLY">Semanal</MenuItem>
+                                        <MenuItem value="MONTHLY">Mensal</MenuItem>
+                                        <MenuItem value="YEARLY">Anual</MenuItem>
+                                    </TextField>
+                                )}
+                            />
+                            <Controller
+                                name="amount"
+                                control={control}
+                                rules={{ required: 'Valor é obrigatório', min: { value: 0.01, message: 'Valor deve ser maior que zero' } }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Valor"
+                                        type="number"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="startDate"
+                                control={control}
+                                rules={{ required: 'Data de início é obrigatória' }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Data de Início"
+                                        type="date"
+                                        fullWidth
+                                        InputLabelProps={{ shrink: true }}
+                                        error={!!error}
+                                        helperText={error?.message}
+                                    />
+                                )}
+                            />
+                        </Box>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setOpen(false)}>Cancelar</Button>
+                        <Button type="submit" variant="contained">
+                            Salvar
+                        </Button>
+                    </DialogActions>
+                </form>
             </Dialog>
         </Container>
     );

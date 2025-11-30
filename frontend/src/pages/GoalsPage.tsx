@@ -15,31 +15,51 @@ import {
     DialogActions,
     TextField,
 } from '@mui/material';
-import { Add, Edit, Delete } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
-import { goalService } from '../services/api';
+import { Edit, Delete } from '@mui/icons-material';
+import PageHeader from '../components/PageHeader';
 import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import { useForm, Controller } from 'react-hook-form';
+import {
+    useGoals,
+    useCreateGoal,
+    useUpdateGoal,
+    useDeleteGoal
+} from '../hooks/api/useGoals';
+
+interface GoalFormData {
+    name: string;
+    targetAmount: number;
+    currentAmount: number;
+    deadline: string;
+    color: string;
+}
+
+const defaultValues: GoalFormData = {
+    name: '',
+    targetAmount: 0,
+    currentAmount: 0,
+    deadline: '',
+    color: '#000000',
+};
 
 export default function GoalsPage() {
     const [open, setOpen] = useState(false);
     const [editingGoal, setEditingGoal] = useState<any>(null);
-    const [formData, setFormData] = useState({
-        name: '',
-        targetAmount: 0,
-        currentAmount: 0,
-        deadline: '',
-        color: '#000000',
-    });
 
-    const { data: goals = [], refetch } = useQuery({
-        queryKey: ['goals'],
-        queryFn: goalService.getAll,
+    // Hooks
+    const { data: goals = [] } = useGoals();
+    const createGoal = useCreateGoal();
+    const updateGoal = useUpdateGoal();
+    const deleteGoal = useDeleteGoal();
+
+    const { control, handleSubmit, reset } = useForm<GoalFormData>({
+        defaultValues
     });
 
     const handleOpen = (goal?: any) => {
         if (goal) {
             setEditingGoal(goal);
-            setFormData({
+            reset({
                 name: goal.name,
                 targetAmount: goal.targetAmount,
                 currentAmount: goal.currentAmount,
@@ -48,31 +68,24 @@ export default function GoalsPage() {
             });
         } else {
             setEditingGoal(null);
-            setFormData({
-                name: '',
-                targetAmount: 0,
-                currentAmount: 0,
-                deadline: '',
-                color: '#000000',
-            });
+            reset(defaultValues);
         }
         setOpen(true);
     };
 
-    const handleSave = async () => {
+    const onSubmit = async (data: GoalFormData) => {
         try {
-            const data = {
-                ...formData,
-                deadline: formData.deadline ? new Date(formData.deadline).toISOString() : null,
+            const payload = {
+                ...data,
+                deadline: data.deadline ? new Date(data.deadline).toISOString() : null,
             };
 
             if (editingGoal) {
-                await goalService.update(editingGoal.id, data);
+                await updateGoal.mutateAsync({ id: editingGoal.id, data: payload });
             } else {
-                await goalService.create(data);
+                await createGoal.mutateAsync(payload);
             }
             setOpen(false);
-            refetch();
             showSuccess(`Meta ${editingGoal ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
         } catch (error) {
             showError(error, { title: 'Erro', text: 'Não foi possível salvar a meta.' });
@@ -92,8 +105,7 @@ export default function GoalsPage() {
 
         if (result.isConfirmed) {
             try {
-                await goalService.delete(id);
-                refetch();
+                await deleteGoal.mutateAsync(id);
                 showSuccess('A meta foi excluída.', { title: 'Excluído!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível excluir a meta.' });
@@ -106,14 +118,15 @@ export default function GoalsPage() {
 
     return (
         <Container maxWidth="lg">
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                <Typography variant="h4" fontWeight={700}>
-                    Metas Financeiras
-                </Typography>
-                <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>
-                    Nova Meta
-                </Button>
-            </Box>
+            <PageHeader
+                title="Metas Financeiras"
+                breadcrumbs={[
+                    { label: 'Dashboards', to: '/dashboards' },
+                    { label: 'Metas' }
+                ]}
+                actionLabel="Nova Meta"
+                onAction={() => handleOpen()}
+            />
 
             <Grid container spacing={3}>
                 {goals.map((goal: any) => {
@@ -175,45 +188,75 @@ export default function GoalsPage() {
             </Grid>
 
             <Dialog open={open} onClose={() => setOpen(false)}>
-                <DialogTitle>{editingGoal ? 'Editar Meta' : 'Nova Meta'}</DialogTitle>
-                <DialogContent>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
-                        <TextField
-                            label="Nome"
-                            fullWidth
-                            value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        />
-                        <TextField
-                            label="Valor Alvo"
-                            type="number"
-                            fullWidth
-                            value={formData.targetAmount}
-                            onChange={(e) => setFormData({ ...formData, targetAmount: parseFloat(e.target.value) })}
-                        />
-                        <TextField
-                            label="Valor Atual"
-                            type="number"
-                            fullWidth
-                            value={formData.currentAmount}
-                            onChange={(e) => setFormData({ ...formData, currentAmount: parseFloat(e.target.value) })}
-                        />
-                        <TextField
-                            label="Prazo"
-                            type="date"
-                            fullWidth
-                            value={formData.deadline}
-                            onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
-                            InputLabelProps={{ shrink: true }}
-                        />
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleSave}>
-                        Salvar
-                    </Button>
-                </DialogActions>
+                <form onSubmit={handleSubmit(onSubmit)}>
+                    <DialogTitle>{editingGoal ? 'Editar Meta' : 'Nova Meta'}</DialogTitle>
+                    <DialogContent>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
+                            <Controller
+                                name="name"
+                                control={control}
+                                rules={{ required: 'Nome é obrigatório' }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Nome"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="targetAmount"
+                                control={control}
+                                rules={{ required: 'Valor alvo é obrigatório', min: { value: 0.01, message: 'Valor deve ser maior que zero' } }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Valor Alvo"
+                                        type="number"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="currentAmount"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Valor Atual"
+                                        type="number"
+                                        fullWidth
+                                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="deadline"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Prazo"
+                                        type="date"
+                                        fullWidth
+                                        InputLabelProps={{ shrink: true }}
+                                    />
+                                )}
+                            />
+                        </Box>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setOpen(false)}>Cancelar</Button>
+                        <Button type="submit" variant="contained">
+                            Salvar
+                        </Button>
+                    </DialogActions>
+                </form>
             </Dialog>
         </Container>
     );

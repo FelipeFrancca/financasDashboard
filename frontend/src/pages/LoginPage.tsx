@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
+import { useForm } from "react-hook-form";
 import {
   Box,
   Container,
@@ -16,6 +17,7 @@ import {
   CircularProgress,
   FormControlLabel,
   Checkbox,
+  useTheme,
 } from "@mui/material";
 import {
   Visibility,
@@ -46,11 +48,37 @@ export default function LoginPage() {
   const location = useLocation();
   const [searchParams] = useSearchParams();
   const { login, register, isAuthenticated, isLoading: authLoading } = useAuth();
+  const theme = useTheme();
 
   const [tab, setTab] = useState(0);
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+
+  // Login Form
+  const { register: registerLogin, handleSubmit: handleSubmitLogin, formState: { errors: loginErrors } } = useForm({
+    defaultValues: {
+      email: "",
+      password: "",
+      rememberMe: true
+    }
+  });
+
+  // Register Form
+  const {
+    register: registerSignUp,
+    handleSubmit: handleSubmitSignUp,
+    watch,
+    formState: { errors: signUpErrors }
+  } = useForm({
+    defaultValues: {
+      name: "",
+      email: "",
+      password: "",
+      confirmPassword: ""
+    }
+  });
+
+
 
   // Redirect authenticated users to dashboard
   useEffect(() => {
@@ -70,28 +98,16 @@ export default function LoginPage() {
     }
   }, [searchParams]);
 
-  // Login form state
-  const [loginEmail, setLoginEmail] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-
-  // Register form state
-  const [registerName, setRegisterName] = useState("");
-  const [registerEmail, setRegisterEmail] = useState("");
-  const [registerPassword, setRegisterPassword] = useState("");
-  const [registerConfirmPassword, setRegisterConfirmPassword] = useState("");
-
   const from = (location.state as any)?.from?.pathname || "/dashboards";
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setTab(newValue);
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onLoginSubmit = async (data: any) => {
     setIsLoading(true);
-
     try {
-      await login(loginEmail, loginPassword, rememberMe);
+      await login(data.email, data.password, data.rememberMe);
       navigate(from, { replace: true });
     } catch (err: any) {
       showError(err, { title: "Erro ao Fazer Login" });
@@ -100,23 +116,16 @@ export default function LoginPage() {
     }
   };
 
-  const handleRegister = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (registerPassword !== registerConfirmPassword) {
+  const onRegisterSubmit = async (data: any) => {
+    if (data.password !== data.confirmPassword) {
       showWarning("As senhas não coincidem", { title: "Validação" });
       return;
     }
 
-    if (registerPassword.length < 8) {
-      showWarning("A senha deve ter pelo menos 8 caracteres", { title: "Validação" });
-      return;
-    }
-
     // Validação de senha: deve conter maiúscula, minúscula e número
-    const hasUpperCase = /[A-Z]/.test(registerPassword);
-    const hasLowerCase = /[a-z]/.test(registerPassword);
-    const hasNumber = /\d/.test(registerPassword);
+    const hasUpperCase = /[A-Z]/.test(data.password);
+    const hasLowerCase = /[a-z]/.test(data.password);
+    const hasNumber = /\d/.test(data.password);
 
     if (!hasUpperCase || !hasLowerCase || !hasNumber) {
       showWarning(
@@ -127,9 +136,8 @@ export default function LoginPage() {
     }
 
     setIsLoading(true);
-
     try {
-      await register(registerEmail, registerPassword, registerName);
+      await register(data.email, data.password, data.name);
       navigate(from, { replace: true });
     } catch (err: any) {
       showError(err, { title: "Erro ao Criar Conta" });
@@ -149,7 +157,7 @@ export default function LoginPage() {
         minHeight: "100vh",
         display: "flex",
         alignItems: "center",
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+        background: theme.palette.gradients?.auth || "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
       }}
     >
       <Container maxWidth="sm">
@@ -174,26 +182,26 @@ export default function LoginPage() {
 
             {/* Login Tab */}
             <TabPanel value={tab} index={0}>
-              <form onSubmit={handleLogin}>
+              <form onSubmit={handleSubmitLogin(onLoginSubmit)}>
                 <TextField
                   fullWidth
                   label="Email"
                   type="email"
-                  value={loginEmail}
-                  onChange={(e) => setLoginEmail(e.target.value)}
-                  required
                   margin="normal"
                   autoComplete="email"
+                  error={!!loginErrors.email}
+                  helperText={loginErrors.email?.message as string}
+                  {...registerLogin("email", { required: "Email é obrigatório" })}
                 />
                 <TextField
                   fullWidth
                   label="Senha"
                   type={showPassword ? "text" : "password"}
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  required
                   margin="normal"
                   autoComplete="current-password"
+                  error={!!loginErrors.password}
+                  helperText={loginErrors.password?.message as string}
+                  {...registerLogin("password", { required: "Senha é obrigatória" })}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -219,10 +227,8 @@ export default function LoginPage() {
                 <FormControlLabel
                   control={
                     <Checkbox
-                      value="remember"
                       color="primary"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
+                      {...registerLogin("rememberMe")}
                     />
                   }
                   label="Permanecer conectado"
@@ -243,35 +249,47 @@ export default function LoginPage() {
 
             {/* Register Tab */}
             <TabPanel value={tab} index={1}>
-              <form onSubmit={handleRegister}>
+              <form onSubmit={handleSubmitSignUp(onRegisterSubmit)}>
                 <TextField
                   fullWidth
                   label="Nome"
-                  value={registerName}
-                  onChange={(e) => setRegisterName(e.target.value)}
                   margin="normal"
                   autoComplete="name"
+                  {...registerSignUp("name", { required: "Nome é obrigatório" })}
+                  error={!!signUpErrors.name}
+                  helperText={signUpErrors.name?.message as string}
                 />
                 <TextField
                   fullWidth
                   label="Email"
                   type="email"
-                  value={registerEmail}
-                  onChange={(e) => setRegisterEmail(e.target.value)}
-                  required
                   margin="normal"
                   autoComplete="email"
+                  {...registerSignUp("email", {
+                    required: "Email é obrigatório",
+                    pattern: {
+                      value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                      message: "Email inválido"
+                    }
+                  })}
+                  error={!!signUpErrors.email}
+                  helperText={signUpErrors.email?.message as string}
                 />
                 <TextField
                   fullWidth
                   label="Senha"
                   type={showPassword ? "text" : "password"}
-                  value={registerPassword}
-                  onChange={(e) => setRegisterPassword(e.target.value)}
-                  required
                   margin="normal"
                   autoComplete="new-password"
-                  helperText="Mínimo 8 caracteres, incluindo maiúscula, minúscula e número"
+                  helperText={signUpErrors.password?.message as string || "Mínimo 8 caracteres, incluindo maiúscula, minúscula e número"}
+                  error={!!signUpErrors.password}
+                  {...registerSignUp("password", {
+                    required: "Senha é obrigatória",
+                    minLength: {
+                      value: 8,
+                      message: "Mínimo de 8 caracteres"
+                    }
+                  })}
                   InputProps={{
                     endAdornment: (
                       <InputAdornment position="end">
@@ -286,21 +304,18 @@ export default function LoginPage() {
                   fullWidth
                   label="Confirmar Senha"
                   type={showPassword ? "text" : "password"}
-                  value={registerConfirmPassword}
-                  onChange={(e) => setRegisterConfirmPassword(e.target.value)}
-                  required
                   margin="normal"
                   autoComplete="new-password"
-                  error={
-                    registerConfirmPassword.length > 0 &&
-                    registerPassword !== registerConfirmPassword
-                  }
-                  helperText={
-                    registerConfirmPassword.length > 0 &&
-                      registerPassword !== registerConfirmPassword
-                      ? "As senhas não coincidem"
-                      : ""
-                  }
+                  error={!!signUpErrors.confirmPassword}
+                  helperText={signUpErrors.confirmPassword?.message as string}
+                  {...registerSignUp("confirmPassword", {
+                    required: "Confirmação de senha é obrigatória",
+                    validate: (val: string) => {
+                      if (watch('password') != val) {
+                        return "As senhas não coincidem";
+                      }
+                    },
+                  })}
                 />
 
                 <Button

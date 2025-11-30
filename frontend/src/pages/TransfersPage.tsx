@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
     Box,
     Container,
-    Typography,
     Button,
     Card,
     CardContent,
@@ -20,59 +19,64 @@ import {
     TextField,
     MenuItem,
 } from '@mui/material';
-import { Add, Delete, ArrowForward } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
-import { transferService, accountService } from '../services/api';
+import { Delete, ArrowForward } from '@mui/icons-material';
+import PageHeader from '../components/PageHeader';
 import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import { useForm, Controller } from 'react-hook-form';
+import {
+    useTransfers,
+    useCreateTransfer,
+    useDeleteTransfer
+} from '../hooks/api/useTransfers';
+import { useAccounts } from '../hooks/api/useAccounts';
+
+interface TransferFormData {
+    fromAccountId: string;
+    toAccountId: string;
+    amount: number;
+    date: string;
+    description: string;
+}
+
+const defaultValues: TransferFormData = {
+    fromAccountId: '',
+    toAccountId: '',
+    amount: 0,
+    date: new Date().toISOString().split('T')[0],
+    description: '',
+};
 
 export default function TransfersPage() {
     const [open, setOpen] = useState(false);
-    const [formData, setFormData] = useState({
-        fromAccountId: '',
-        toAccountId: '',
-        amount: 0,
-        date: new Date().toISOString().split('T')[0],
-        description: '',
-    });
 
-    const { data: transfers = [], refetch } = useQuery({
-        queryKey: ['transfers'],
-        queryFn: transferService.getAll,
-    });
+    // Hooks
+    const { data: transfers = [] } = useTransfers();
+    const { data: accounts = [] } = useAccounts();
+    const createTransfer = useCreateTransfer();
+    const deleteTransfer = useDeleteTransfer();
 
-    const { data: accounts = [] } = useQuery({
-        queryKey: ['accounts'],
-        queryFn: accountService.getAll,
+    const { control, handleSubmit, reset } = useForm<TransferFormData>({
+        defaultValues
     });
-
-    console.log('🔍 [TransfersPage] Loaded transfers:', transfers);
 
     const handleOpen = () => {
-        setFormData({
-            fromAccountId: '',
-            toAccountId: '',
-            amount: 0,
-            date: new Date().toISOString().split('T')[0],
-            description: '',
-        });
+        reset(defaultValues);
         setOpen(true);
     };
 
-    const handleSave = async () => {
-        if (formData.fromAccountId === formData.toAccountId) {
+    const onSubmit = async (data: TransferFormData) => {
+        if (data.fromAccountId === data.toAccountId) {
             showError('A conta de origem e destino devem ser diferentes.', { title: 'Erro' });
             return;
         }
 
         try {
-            const data = {
-                ...formData,
-                date: new Date(formData.date).toISOString(),
+            const payload = {
+                ...data,
+                date: new Date(data.date).toISOString(),
             };
-            console.log('🔍 [TransfersPage] Saving transfer:', data);
-            await transferService.create(data);
+            await createTransfer.mutateAsync(payload);
             setOpen(false);
-            refetch();
             showSuccess('Transferência realizada com sucesso!', { title: 'Sucesso', timer: 1500 });
         } catch (error) {
             console.error('Error creating transfer:', error);
@@ -93,8 +97,7 @@ export default function TransfersPage() {
 
         if (result.isConfirmed) {
             try {
-                await transferService.delete(id);
-                refetch();
+                await deleteTransfer.mutateAsync(id);
                 showSuccess('A transferência foi revertida.', { title: 'Revertido!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível reverter a transferência.' });
@@ -115,14 +118,15 @@ export default function TransfersPage() {
 
     return (
         <Container maxWidth="lg">
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                <Typography variant="h4" fontWeight={700}>
-                    Transferências
-                </Typography>
-                <Button variant="contained" startIcon={<Add />} onClick={handleOpen}>
-                    Nova Transferência
-                </Button>
-            </Box>
+            <PageHeader
+                title="Transferências"
+                breadcrumbs={[
+                    { label: 'Dashboards', to: '/dashboards' },
+                    { label: 'Transferências' }
+                ]}
+                actionLabel="Nova Transferência"
+                onAction={handleOpen}
+            />
 
             <Card>
                 <CardContent>
@@ -171,64 +175,104 @@ export default function TransfersPage() {
             </Card>
 
             <Dialog open={open} onClose={() => setOpen(false)}>
-                <DialogTitle>Nova Transferência</DialogTitle>
-                <DialogContent>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
-                        <TextField
-                            select
-                            label="Conta de Origem"
-                            fullWidth
-                            value={formData.fromAccountId}
-                            onChange={(e) => setFormData({ ...formData, fromAccountId: e.target.value })}
-                        >
-                            {accounts.map((account: any) => (
-                                <MenuItem key={account.id} value={account.id}>
-                                    {account.name} ({new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(account.balance)})
-                                </MenuItem>
-                            ))}
-                        </TextField>
-                        <TextField
-                            select
-                            label="Conta de Destino"
-                            fullWidth
-                            value={formData.toAccountId}
-                            onChange={(e) => setFormData({ ...formData, toAccountId: e.target.value })}
-                        >
-                            {accounts.map((account: any) => (
-                                <MenuItem key={account.id} value={account.id}>
-                                    {account.name}
-                                </MenuItem>
-                            ))}
-                        </TextField>
-                        <TextField
-                            label="Valor"
-                            type="number"
-                            fullWidth
-                            value={formData.amount}
-                            onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
-                        />
-                        <TextField
-                            label="Data"
-                            type="date"
-                            fullWidth
-                            value={formData.date}
-                            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                            InputLabelProps={{ shrink: true }}
-                        />
-                        <TextField
-                            label="Descrição"
-                            fullWidth
-                            value={formData.description}
-                            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                        />
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleSave}>
-                        Transferir
-                    </Button>
-                </DialogActions>
+                <form onSubmit={handleSubmit(onSubmit)}>
+                    <DialogTitle>Nova Transferência</DialogTitle>
+                    <DialogContent>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
+                            <Controller
+                                name="fromAccountId"
+                                control={control}
+                                rules={{ required: 'Conta de origem é obrigatória' }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        select
+                                        label="Conta de Origem"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                    >
+                                        {accounts.map((account: any) => (
+                                            <MenuItem key={account.id} value={account.id}>
+                                                {account.name} ({new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(account.balance)})
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
+                                )}
+                            />
+                            <Controller
+                                name="toAccountId"
+                                control={control}
+                                rules={{ required: 'Conta de destino é obrigatória' }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        select
+                                        label="Conta de Destino"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                    >
+                                        {accounts.map((account: any) => (
+                                            <MenuItem key={account.id} value={account.id}>
+                                                {account.name}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
+                                )}
+                            />
+                            <Controller
+                                name="amount"
+                                control={control}
+                                rules={{ required: 'Valor é obrigatório', min: { value: 0.01, message: 'Valor deve ser maior que zero' } }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Valor"
+                                        type="number"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="date"
+                                control={control}
+                                rules={{ required: 'Data é obrigatória' }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Data"
+                                        type="date"
+                                        fullWidth
+                                        InputLabelProps={{ shrink: true }}
+                                        error={!!error}
+                                        helperText={error?.message}
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="description"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Descrição"
+                                        fullWidth
+                                    />
+                                )}
+                            />
+                        </Box>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setOpen(false)}>Cancelar</Button>
+                        <Button type="submit" variant="contained">
+                            Transferir
+                        </Button>
+                    </DialogActions>
+                </form>
             </Dialog>
         </Container>
     );

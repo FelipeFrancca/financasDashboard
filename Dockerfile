@@ -11,7 +11,7 @@ FROM oven/bun:1-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
-COPY frontend/package.json frontend/bun.lockb* ./
+COPY frontend/package.json frontend/bun.lock* ./
 
 RUN bun install --frozen-lockfile
 
@@ -26,7 +26,7 @@ FROM oven/bun:1-alpine AS backend-builder
 
 WORKDIR /app/backend
 
-COPY backend/package.json backend/bun.lockb* ./
+COPY backend/package.json backend/bun.lock* ./
 
 RUN bun install --frozen-lockfile
 
@@ -44,7 +44,7 @@ RUN apk add --no-cache openssl
 WORKDIR /app
 
 COPY --from=backend-builder /app/backend/package.json ./backend/
-COPY --from=backend-builder /app/backend/bun.lockb* ./backend/
+COPY --from=backend-builder /app/backend/bun.lock* ./backend/
 
 WORKDIR /app/backend
 

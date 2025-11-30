@@ -1,5 +1,19 @@
-import { Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField, MenuItem, Grid } from '@mui/material';
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
+import {
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
+  TextField,
+  MenuItem,
+  Grid,
+  InputAdornment,
+  FormControlLabel,
+  Switch
+} from '@mui/material';
+import { useForm, Controller } from 'react-hook-form';
+import { useCategories } from '../hooks/api/useCategories';
 import type { Transaction } from '../types';
 
 interface TransactionFormProps {
@@ -9,72 +23,299 @@ interface TransactionFormProps {
   onSave: (data: Partial<Transaction>) => Promise<void>;
 }
 
+interface TransactionFormData {
+  date: string;
+  entryType: 'Receita' | 'Despesa';
+  flowType: 'Fixa' | 'Variável';
+  category: string;
+  subcategory: string;
+  description: string;
+  amount: number | string;
+  paymentMethod: string;
+  institution: string;
+  cardBrand: string;
+  installmentTotal: number;
+  installmentNumber: number;
+  installmentStatus: 'N/A' | 'Paga' | 'Pendente';
+  notes: string;
+  isTemporary: boolean;
+}
+
+const defaultValues: TransactionFormData = {
+  date: new Date().toISOString().split('T')[0],
+  entryType: 'Receita',
+  flowType: 'Fixa',
+  category: '',
+  subcategory: '',
+  description: '',
+  amount: '',
+  paymentMethod: '',
+  institution: '',
+  cardBrand: '',
+  installmentTotal: 1,
+  installmentNumber: 1,
+  installmentStatus: 'N/A',
+  notes: '',
+  isTemporary: false,
+};
+
 export default function TransactionForm({ open, transaction, onClose, onSave }: TransactionFormProps) {
-  const [formData, setFormData] = useState<any>({
-    date: new Date().toISOString().split('T')[0],
-    entryType: 'Receita',
-    flowType: 'Fixa',
-    category: '',
-    subcategory: '',
-    description: '',
-    amount: '',
-    paymentMethod: '',
-    institution: '',
-    cardBrand: '',
-    installmentTotal: 0,
-    installmentNumber: 0,
-    installmentStatus: 'N/A',
-    notes: '',
-    isTemporary: false,
+  const { data: categories = [] } = useCategories();
+
+  const { control, handleSubmit, reset, watch, setValue } = useForm<TransactionFormData>({
+    defaultValues
+  });
+
+  const entryType = watch('entryType');
+
+  // Filter categories based on entry type
+  const filteredCategories = categories.filter((cat: any) => {
+    const type = cat.type === 'INCOME' ? 'Receita' : 'Despesa';
+    return type === entryType;
   });
 
   useEffect(() => {
-    if (transaction) {
-      setFormData({ ...transaction, date: new Date(transaction.date).toISOString().split('T')[0] });
+    if (open) {
+      if (transaction) {
+        reset({
+          ...transaction,
+          date: new Date(transaction.date).toISOString().split('T')[0],
+          amount: transaction.amount,
+        });
+      } else {
+        reset(defaultValues);
+      }
     }
-  }, [transaction]);
+  }, [open, transaction, reset]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    await onSave({ ...formData, amount: parseFloat(formData.amount) });
+  const onSubmit = async (data: TransactionFormData) => {
+    await onSave({
+      ...data,
+      amount: Number(data.amount),
+      installmentTotal: Number(data.installmentTotal),
+      installmentNumber: Number(data.installmentNumber),
+    });
     onClose();
   };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <DialogTitle>{transaction ? 'Editar Transação' : 'Nova Transação'}</DialogTitle>
-      <DialogContent>
-        <Grid container spacing={2} sx={{ mt: 1 }}>
-          <Grid item xs={6}>
-            <TextField select fullWidth label="Tipo" value={formData.entryType} onChange={(e) => setFormData({ ...formData, entryType: e.target.value })}>
-              <MenuItem value="Receita">Receita</MenuItem>
-              <MenuItem value="Despesa">Despesa</MenuItem>
-            </TextField>
+      <form onSubmit={handleSubmit(onSubmit)}>
+        <DialogTitle>{transaction ? 'Editar Transação' : 'Nova Transação'}</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            {/* Linha 1: Tipo e Fluxo */}
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="entryType"
+                control={control}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    select
+                    fullWidth
+                    label="Tipo"
+                    onChange={(e) => {
+                      field.onChange(e);
+                      setValue('category', ''); // Reset category on type change
+                    }}
+                  >
+                    <MenuItem value="Receita">Receita</MenuItem>
+                    <MenuItem value="Despesa">Despesa</MenuItem>
+                  </TextField>
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="flowType"
+                control={control}
+                render={({ field }) => (
+                  <TextField {...field} select fullWidth label="Fluxo">
+                    <MenuItem value="Fixa">Fixa</MenuItem>
+                    <MenuItem value="Variável">Variável</MenuItem>
+                  </TextField>
+                )}
+              />
+            </Grid>
+
+            {/* Linha 2: Descrição */}
+            <Grid item xs={12}>
+              <Controller
+                name="description"
+                control={control}
+                rules={{ required: 'Descrição é obrigatória' }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    label="Descrição"
+                    error={!!error}
+                    helperText={error?.message}
+                  />
+                )}
+              />
+            </Grid>
+
+            {/* Linha 3: Valor e Data */}
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="amount"
+                control={control}
+                rules={{ required: 'Valor é obrigatório', min: { value: 0.01, message: 'Valor deve ser maior que zero' } }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    type="number"
+                    label="Valor"
+                    InputProps={{
+                      startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                    }}
+                    error={!!error}
+                    helperText={error?.message}
+                  />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="date"
+                control={control}
+                rules={{ required: 'Data é obrigatória' }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    type="date"
+                    label="Data"
+                    InputLabelProps={{ shrink: true }}
+                    error={!!error}
+                    helperText={error?.message}
+                  />
+                )}
+              />
+            </Grid>
+
+            {/* Linha 4: Categoria e Subcategoria */}
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="category"
+                control={control}
+                rules={{ required: 'Categoria é obrigatória' }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    select
+                    fullWidth
+                    label="Categoria"
+                    error={!!error}
+                    helperText={error?.message}
+                  >
+                    {filteredCategories.map((cat: any) => (
+                      <MenuItem key={cat.id} value={cat.name}>
+                        {cat.name}
+                      </MenuItem>
+                    ))}
+                    {filteredCategories.length === 0 && (
+                      <MenuItem disabled>
+                        Nenhuma categoria de {entryType.toLowerCase()} encontrada
+                      </MenuItem>
+                    )}
+                  </TextField>
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="subcategory"
+                control={control}
+                render={({ field }) => (
+                  <TextField {...field} fullWidth label="Subcategoria (Opcional)" />
+                )}
+              />
+            </Grid>
+
+            {/* Linha 5: Pagamento e Instituição */}
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="paymentMethod"
+                control={control}
+                render={({ field }) => (
+                  <TextField {...field} select fullWidth label="Método de Pagamento">
+                    <MenuItem value="Dinheiro">Dinheiro</MenuItem>
+                    <MenuItem value="Pix">Pix</MenuItem>
+                    <MenuItem value="Cartão de Crédito">Cartão de Crédito</MenuItem>
+                    <MenuItem value="Cartão de Débito">Cartão de Débito</MenuItem>
+                    <MenuItem value="Transferência">Transferência</MenuItem>
+                    <MenuItem value="Boleto">Boleto</MenuItem>
+                  </TextField>
+                )}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="institution"
+                control={control}
+                render={({ field }) => (
+                  <TextField {...field} fullWidth label="Instituição / Banco" />
+                )}
+              />
+            </Grid>
+
+            {/* Linha 6: Parcelamento (Condicional) */}
+            {watch('paymentMethod') === 'Cartão de Crédito' && (
+              <>
+                <Grid item xs={6}>
+                  <Controller
+                    name="installmentNumber"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField {...field} type="number" fullWidth label="Parcela Atual" />
+                    )}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <Controller
+                    name="installmentTotal"
+                    control={control}
+                    render={({ field }) => (
+                      <TextField {...field} type="number" fullWidth label="Total de Parcelas" />
+                    )}
+                  />
+                </Grid>
+              </>
+            )}
+
+            {/* Linha 7: Notas e Temporário */}
+            <Grid item xs={12}>
+              <Controller
+                name="notes"
+                control={control}
+                render={({ field }) => (
+                  <TextField {...field} fullWidth multiline rows={2} label="Observações" />
+                )}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <Controller
+                name="isTemporary"
+                control={control}
+                render={({ field }) => (
+                  <FormControlLabel
+                    control={<Switch checked={field.value} onChange={field.onChange} />}
+                    label="Transação Temporária (não afeta saldo oficial)"
+                  />
+                )}
+              />
+            </Grid>
           </Grid>
-          <Grid item xs={6}>
-            <TextField select fullWidth label="Fluxo" value={formData.flowType} onChange={(e) => setFormData({ ...formData, flowType: e.target.value })}>
-              <MenuItem value="Fixa">Fixa</MenuItem>
-              <MenuItem value="Variável">Variável</MenuItem>
-            </TextField>
-          </Grid>
-          <Grid item xs={12}>
-            <TextField fullWidth label="Categoria" required value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} />
-          </Grid>
-          <Grid item xs={12}>
-            <TextField fullWidth label="Descrição" required value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
-          </Grid>
-          <Grid item xs={6}>
-            <TextField fullWidth type="number" label="Valor" required value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} />
-          </Grid>
-          <Grid item xs={6}>
-            <TextField fullWidth type="date" label="Data" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} InputLabelProps={{ shrink: true }} />
-          </Grid>
-        </Grid>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Cancelar</Button>
-        <Button onClick={handleSubmit} variant="contained">Salvar</Button>
-      </DialogActions>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={onClose}>Cancelar</Button>
+          <Button type="submit" variant="contained">Salvar</Button>
+        </DialogActions>
+      </form>
     </Dialog>
   );
 }

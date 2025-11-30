@@ -4,8 +4,7 @@ import {
   Container,
   useTheme,
 } from '@mui/material';
-import { useQuery } from '@tanstack/react-query';
-import { transactionService } from '../services/api';
+import { useParams } from 'react-router-dom';
 import type { Transaction, TransactionFilters } from '../types';
 import MetricsCards from '../components/MetricsCards';
 import FiltersCard from '../components/FiltersCard';
@@ -14,8 +13,16 @@ import TransactionsTable from '../components/TransactionsTable';
 import TransactionForm from '../components/TransactionForm';
 import QuickEntryForm from '../components/QuickEntryForm';
 import FileUpload from '../components/FileUpload';
-import { useParams } from 'react-router-dom';
+import PageHeader from '../components/PageHeader';
 import { showSuccess, showError, showConfirm, showWarning } from '../utils/notifications';
+import {
+  useTransactions,
+  useTransactionStats,
+  useCreateTransaction,
+  useUpdateTransaction,
+  useDeleteTransaction,
+  useCreateManyTransactions
+} from '../hooks/api/useTransactions';
 
 export default function DashboardFinancial() {
   const { dashboardId } = useParams<{ dashboardId: string }>();
@@ -25,17 +32,14 @@ export default function DashboardFinancial() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
 
-  // Query para buscar transações
-  const { data: transactions = [], refetch, isLoading } = useQuery({
-    queryKey: ['transactions', filters, dashboardId],
-    queryFn: () => transactionService.getAll({ ...filters, dashboardId }),
-  });
+  // Custom Hooks
+  const { data: transactions = [], refetch, isLoading } = useTransactions(filters, dashboardId);
+  const { data: stats } = useTransactionStats(filters, dashboardId);
 
-  // Query para estatísticas
-  const { data: stats } = useQuery({
-    queryKey: ['stats', filters, dashboardId],
-    queryFn: () => transactionService.getStats({ ...filters, dashboardId }),
-  });
+  const createTransaction = useCreateTransaction();
+  const updateTransaction = useUpdateTransaction();
+  const deleteTransaction = useDeleteTransaction();
+  const createManyTransactions = useCreateManyTransactions();
 
   const handleNewTransaction = () => {
     setSelectedTransaction(null);
@@ -62,8 +66,7 @@ export default function DashboardFinancial() {
 
     if (result.isConfirmed) {
       try {
-        await transactionService.delete(id);
-        refetch();
+        await deleteTransaction.mutateAsync(id);
         showSuccess('Transação removida com sucesso.', { title: 'Excluído!' });
       } catch (error) {
         showError(error, { title: 'Erro', text: 'Não foi possível excluir a transação.' });
@@ -74,13 +77,12 @@ export default function DashboardFinancial() {
   const handleSaveTransaction = async (data: Partial<Transaction>) => {
     try {
       if (selectedTransaction) {
-        await transactionService.update(selectedTransaction.id, data);
+        await updateTransaction.mutateAsync({ id: selectedTransaction.id, data });
         showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!' });
       } else {
-        await transactionService.create(data as any);
+        await createTransaction.mutateAsync(data as any);
         showSuccess('Transação criada com sucesso.', { title: 'Criado!' });
       }
-      refetch();
       setShowTransactionForm(false);
     } catch (error) {
       showError(error, { title: 'Erro', text: 'Não foi possível salvar a transação.' });
@@ -89,8 +91,7 @@ export default function DashboardFinancial() {
 
   const handleImport = async (importedTransactions: Partial<Transaction>[]) => {
     try {
-      const result = await transactionService.createMany(importedTransactions as any);
-      refetch();
+      const result = await createManyTransactions.mutateAsync(importedTransactions as any);
       showSuccess(`${result.count} transações importadas com sucesso.`, { title: 'Importado!', timer: 3000 });
     } catch (error) {
       showError(error, { title: 'Erro', text: 'Não foi possível importar as transações.' });
@@ -139,6 +140,14 @@ export default function DashboardFinancial() {
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
+      <PageHeader
+        title="Visão Geral"
+        breadcrumbs={[
+          { label: 'Dashboards', to: '/dashboards' },
+          { label: 'Financeiro' }
+        ]}
+      />
+
       {/* Upload e Entrada Rápida */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(3, 1fr)' }, gap: 3, mb: 4 }}>
         <FileUpload onImport={handleImport} />
@@ -146,7 +155,7 @@ export default function DashboardFinancial() {
       </Box>
 
       {/* Métricas */}
-      <MetricsCards stats={stats} transactions={transactions} />
+      <MetricsCards stats={stats} transactions={transactions} isLoading={isLoading} />
 
       {/* Filtros */}
       <Box id="filters-section" sx={{ mb: 4, scrollMarginTop: 80 }}>

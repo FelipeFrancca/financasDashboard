@@ -11,20 +11,23 @@ import {
     Chip,
 } from '@mui/material';
 import { Delete, CheckCircle, NotificationsActive } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
-import { alertService } from '../services/api';
+import PageHeader from '../components/PageHeader';
 import { showSuccess, showError } from '../utils/notifications';
+import {
+    useAlerts,
+    useMarkAlertAsRead,
+    useDeleteAlert
+} from '../hooks/api/useAlerts';
 
 export default function AlertsPage() {
-    const { data: alerts = [], refetch } = useQuery({
-        queryKey: ['alerts'],
-        queryFn: alertService.getAll,
-    });
+    // Hooks
+    const { data: alerts = [] } = useAlerts();
+    const markAsRead = useMarkAlertAsRead();
+    const deleteAlert = useDeleteAlert();
 
     const handleMarkAsRead = async (id: string) => {
         try {
-            await alertService.markAsRead(id);
-            refetch();
+            await markAsRead.mutateAsync(id);
         } catch (error) {
             showError(error, { title: 'Erro', text: 'Erro ao marcar alerta como lido' });
         }
@@ -32,8 +35,7 @@ export default function AlertsPage() {
 
     const handleDelete = async (id: string) => {
         try {
-            await alertService.delete(id);
-            refetch();
+            await deleteAlert.mutateAsync(id);
             showSuccess('Alerta excluído', { title: 'Sucesso', timer: 1500 });
         } catch (error) {
             showError(error, { title: 'Erro', text: 'Erro ao excluir alerta' });
@@ -46,12 +48,14 @@ export default function AlertsPage() {
 
     return (
         <Container maxWidth="lg">
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 4, gap: 2 }}>
-                <NotificationsActive fontSize="large" color="primary" />
-                <Typography variant="h4" fontWeight={700}>
-                    Alertas e Notificações
-                </Typography>
-            </Box>
+            <PageHeader
+                title="Alertas e Notificações"
+                breadcrumbs={[
+                    { label: 'Dashboards', to: '/dashboards' },
+                    { label: 'Alertas' }
+                ]}
+                actionIcon={<NotificationsActive />}
+            />
 
             <Card>
                 <CardContent>

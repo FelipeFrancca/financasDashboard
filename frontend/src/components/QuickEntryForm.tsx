@@ -1,6 +1,6 @@
-import { Card, CardHeader, CardContent, TextField, Button, MenuItem, Grid } from '@mui/material';
+import { Card, CardHeader, CardContent, TextField, Button, MenuItem, Grid, InputAdornment } from '@mui/material';
 import FlashOn from '@mui/icons-material/FlashOn';
-import { useState } from 'react';
+import { useForm, Controller } from 'react-hook-form';
 import { showError } from '../utils/notifications';
 
 interface QuickEntryFormProps {
@@ -8,28 +8,43 @@ interface QuickEntryFormProps {
   onRefetch: () => void;
 }
 
+interface QuickEntryData {
+  entryType: 'Receita' | 'Despesa';
+  flowType: 'Fixa' | 'Variável';
+  description: string;
+  amount: string;
+  date: string;
+}
+
 export default function QuickEntryForm({ onSave, onRefetch }: QuickEntryFormProps) {
-  const [formData, setFormData] = useState({
-    entryType: 'Receita',
-    flowType: 'Fixa',
-    description: '',
-    amount: '',
-    date: new Date().toISOString().split('T')[0],
+  const { control, handleSubmit, reset } = useForm<QuickEntryData>({
+    defaultValues: {
+      entryType: 'Receita',
+      flowType: 'Fixa',
+      description: '',
+      amount: '',
+      date: new Date().toISOString().split('T')[0],
+    }
   });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: QuickEntryData) => {
     try {
       await onSave({
-        ...formData,
-        amount: parseFloat(formData.amount),
-        category: formData.entryType === 'Receita' ? 'Entrada rápida' : 'Gasto rápido',
-        installmentTotal: 0,
-        installmentNumber: 0,
+        ...data,
+        amount: parseFloat(data.amount),
+        category: data.entryType === 'Receita' ? 'Entrada rápida' : 'Gasto rápido',
+        installmentTotal: 1,
+        installmentNumber: 1,
         installmentStatus: 'N/A',
         isTemporary: true,
       });
-      setFormData({ ...formData, description: '', amount: '' });
+      reset({
+        entryType: data.entryType,
+        flowType: data.flowType,
+        description: '',
+        amount: '',
+        date: new Date().toISOString().split('T')[0],
+      });
       onRefetch();
     } catch (error) {
       showError(error, { title: 'Erro', text: 'Não foi possível salvar' });
@@ -37,34 +52,100 @@ export default function QuickEntryForm({ onSave, onRefetch }: QuickEntryFormProp
   };
 
   return (
-    <Card>
-      <CardHeader avatar={<FlashOn />} title="Entrada Rápida" titleTypographyProps={{ variant: 'h6', fontWeight: 600 }} />
+    <Card sx={{ height: '100%' }}>
+      <CardHeader
+        avatar={<FlashOn color="primary" />}
+        title="Entrada Rápida"
+        titleTypographyProps={{ variant: 'h6', fontWeight: 600 }}
+      />
       <CardContent>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit(onSubmit)}>
           <Grid container spacing={2}>
             <Grid item xs={6}>
-              <TextField select fullWidth label="Tipo" value={formData.entryType} onChange={(e) => setFormData({ ...formData, entryType: e.target.value })}>
-                <MenuItem value="Receita">Receita</MenuItem>
-                <MenuItem value="Despesa">Despesa</MenuItem>
-              </TextField>
+              <Controller
+                name="entryType"
+                control={control}
+                render={({ field }) => (
+                  <TextField {...field} select fullWidth label="Tipo" size="small">
+                    <MenuItem value="Receita">Receita</MenuItem>
+                    <MenuItem value="Despesa">Despesa</MenuItem>
+                  </TextField>
+                )}
+              />
             </Grid>
             <Grid item xs={6}>
-              <TextField select fullWidth label="Fluxo" value={formData.flowType} onChange={(e) => setFormData({ ...formData, flowType: e.target.value })}>
-                <MenuItem value="Fixa">Fixa</MenuItem>
-                <MenuItem value="Variável">Variável</MenuItem>
-              </TextField>
+              <Controller
+                name="flowType"
+                control={control}
+                render={({ field }) => (
+                  <TextField {...field} select fullWidth label="Fluxo" size="small">
+                    <MenuItem value="Fixa">Fixa</MenuItem>
+                    <MenuItem value="Variável">Variável</MenuItem>
+                  </TextField>
+                )}
+              />
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth label="Descrição" required value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} />
+              <Controller
+                name="description"
+                control={control}
+                rules={{ required: 'Descrição é obrigatória' }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    label="Descrição"
+                    size="small"
+                    error={!!error}
+                    helperText={error?.message}
+                  />
+                )}
+              />
             </Grid>
             <Grid item xs={6}>
-              <TextField fullWidth type="number" label="Valor" required value={formData.amount} onChange={(e) => setFormData({ ...formData, amount: e.target.value })} />
+              <Controller
+                name="amount"
+                control={control}
+                rules={{ required: 'Valor obrigatório', min: { value: 0.01, message: '> 0' } }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    type="number"
+                    label="Valor"
+                    size="small"
+                    InputProps={{
+                      startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                    }}
+                    error={!!error}
+                    helperText={error?.message}
+                  />
+                )}
+              />
             </Grid>
             <Grid item xs={6}>
-              <TextField fullWidth type="date" label="Data" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} InputLabelProps={{ shrink: true }} />
+              <Controller
+                name="date"
+                control={control}
+                rules={{ required: 'Data obrigatória' }}
+                render={({ field, fieldState: { error } }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    type="date"
+                    label="Data"
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                    error={!!error}
+                    helperText={error?.message}
+                  />
+                )}
+              />
             </Grid>
             <Grid item xs={12}>
-              <Button type="submit" variant="contained" fullWidth>Registrar</Button>
+              <Button type="submit" variant="contained" fullWidth>
+                Registrar
+              </Button>
             </Grid>
           </Grid>
         </form>

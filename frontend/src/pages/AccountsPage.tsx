@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
     Box,
     Container,
-    Typography,
     Button,
     Card,
     CardContent,
@@ -20,10 +19,16 @@ import {
     TextField,
     MenuItem,
 } from '@mui/material';
-import { Add, Edit, Delete } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
-import { accountService } from '../services/api';
+import { Edit, Delete } from '@mui/icons-material';
+import PageHeader from '../components/PageHeader';
 import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import { useForm, Controller } from 'react-hook-form';
+import {
+    useAccounts,
+    useCreateAccount,
+    useUpdateAccount,
+    useDeleteAccount
+} from '../hooks/api/useAccounts';
 
 // Função para traduzir tipos de conta
 const translateAccountType = (type: string): string => {
@@ -38,26 +43,40 @@ const translateAccountType = (type: string): string => {
     return types[type] || type;
 };
 
+interface AccountFormData {
+    name: string;
+    type: string;
+    initialBalance: number;
+    institution: string;
+    color: string;
+}
+
+const defaultValues: AccountFormData = {
+    name: '',
+    type: 'CHECKING',
+    initialBalance: 0,
+    institution: '',
+    color: '#000000',
+};
+
 export default function AccountsPage() {
     const [open, setOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<any>(null);
-    const [formData, setFormData] = useState({
-        name: '',
-        type: 'CHECKING',
-        initialBalance: 0,
-        institution: '',
-        color: '#000000',
-    });
 
-    const { data: accounts = [], refetch } = useQuery({
-        queryKey: ['accounts'],
-        queryFn: accountService.getAll,
+    // Hooks
+    const { data: accounts = [] } = useAccounts();
+    const createAccount = useCreateAccount();
+    const updateAccount = useUpdateAccount();
+    const deleteAccount = useDeleteAccount();
+
+    const { control, handleSubmit, reset } = useForm<AccountFormData>({
+        defaultValues
     });
 
     const handleOpen = (account?: any) => {
         if (account) {
             setEditingAccount(account);
-            setFormData({
+            reset({
                 name: account.name,
                 type: account.type,
                 initialBalance: account.currentBalance || account.initialBalance || 0,
@@ -66,31 +85,24 @@ export default function AccountsPage() {
             });
         } else {
             setEditingAccount(null);
-            setFormData({
-                name: '',
-                type: 'CHECKING',
-                initialBalance: 0,
-                institution: '',
-                color: '#000000',
-            });
+            reset(defaultValues);
         }
         setOpen(true);
     };
 
-    const handleSave = async () => {
+    const onSubmit = async (data: AccountFormData) => {
         try {
             const dataToSend = {
-                ...formData,
-                currentBalance: formData.initialBalance,
+                ...data,
+                currentBalance: data.initialBalance,
             };
 
             if (editingAccount) {
-                await accountService.update(editingAccount.id, dataToSend);
+                await updateAccount.mutateAsync({ id: editingAccount.id, data: dataToSend });
             } else {
-                await accountService.create(dataToSend);
+                await createAccount.mutateAsync(dataToSend);
             }
             setOpen(false);
-            refetch();
             showSuccess(`Conta ${editingAccount ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
         } catch (error) {
             showError(error, { title: 'Erro', text: 'Não foi possível salvar a conta.' });
@@ -110,8 +122,7 @@ export default function AccountsPage() {
 
         if (result.isConfirmed) {
             try {
-                await accountService.delete(id);
-                refetch();
+                await deleteAccount.mutateAsync(id);
                 showSuccess('A conta foi excluída.', { title: 'Excluído!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível excluir a conta.' });
@@ -121,14 +132,15 @@ export default function AccountsPage() {
 
     return (
         <Container maxWidth="lg">
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                <Typography variant="h4" fontWeight={700}>
-                    Contas Bancárias
-                </Typography>
-                <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>
-                    Nova Conta
-                </Button>
-            </Box>
+            <PageHeader
+                title="Contas Bancárias"
+                breadcrumbs={[
+                    { label: 'Dashboards', to: '/dashboards' },
+                    { label: 'Contas' }
+                ]}
+                actionLabel="Nova Conta"
+                onAction={() => handleOpen()}
+            />
 
             <Card>
                 <CardContent>
@@ -176,50 +188,76 @@ export default function AccountsPage() {
             </Card>
 
             <Dialog open={open} onClose={() => setOpen(false)} disableEnforceFocus>
-                <DialogTitle>{editingAccount ? 'Editar Conta' : 'Nova Conta'}</DialogTitle>
-                <DialogContent>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
-                        <TextField
-                            label="Nome"
-                            fullWidth
-                            value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        />
-                        <TextField
-                            label="Banco/Instituição"
-                            fullWidth
-                            value={formData.institution}
-                            onChange={(e) => setFormData({ ...formData, institution: e.target.value })}
-                        />
-                        <TextField
-                            select
-                            label="Tipo"
-                            fullWidth
-                            value={formData.type}
-                            onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                        >
-                            <MenuItem value="CHECKING">Conta Corrente</MenuItem>
-                            <MenuItem value="SAVINGS">Poupança</MenuItem>
-                            <MenuItem value="CREDIT_CARD">Cartão de Crédito</MenuItem>
-                            <MenuItem value="INVESTMENT">Investimento</MenuItem>
-                            <MenuItem value="CASH">Dinheiro</MenuItem>
-                            <MenuItem value="OTHER">Outro</MenuItem>
-                        </TextField>
-                        <TextField
-                            label="Saldo Atual"
-                            type="number"
-                            fullWidth
-                            value={formData.initialBalance}
-                            onChange={(e) => setFormData({ ...formData, initialBalance: parseFloat(e.target.value) || 0 })}
-                        />
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleSave}>
-                        Salvar
-                    </Button>
-                </DialogActions>
+                <form onSubmit={handleSubmit(onSubmit)}>
+                    <DialogTitle>{editingAccount ? 'Editar Conta' : 'Nova Conta'}</DialogTitle>
+                    <DialogContent>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
+                            <Controller
+                                name="name"
+                                control={control}
+                                rules={{ required: 'Nome é obrigatório' }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Nome"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="institution"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Banco/Instituição"
+                                        fullWidth
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="type"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        select
+                                        label="Tipo"
+                                        fullWidth
+                                    >
+                                        <MenuItem value="CHECKING">Conta Corrente</MenuItem>
+                                        <MenuItem value="SAVINGS">Poupança</MenuItem>
+                                        <MenuItem value="CREDIT_CARD">Cartão de Crédito</MenuItem>
+                                        <MenuItem value="INVESTMENT">Investimento</MenuItem>
+                                        <MenuItem value="CASH">Dinheiro</MenuItem>
+                                        <MenuItem value="OTHER">Outro</MenuItem>
+                                    </TextField>
+                                )}
+                            />
+                            <Controller
+                                name="initialBalance"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Saldo Atual"
+                                        type="number"
+                                        fullWidth
+                                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                )}
+                            />
+                        </Box>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setOpen(false)}>Cancelar</Button>
+                        <Button type="submit" variant="contained">
+                            Salvar
+                        </Button>
+                    </DialogActions>
+                </form>
             </Dialog>
         </Container>
     );

@@ -5,12 +5,18 @@ declare module '@mui/material/styles' {
     income: Palette['primary'];
     expense: Palette['primary'];
     net: Palette['primary'];
+    gradients: {
+      auth: string;
+    };
   }
 
   interface PaletteOptions {
     income?: PaletteOptions['primary'];
     expense?: PaletteOptions['primary'];
     net?: PaletteOptions['primary'];
+    gradients?: {
+      auth: string;
+    };
   }
 }
 
@@ -19,87 +25,93 @@ const getDesignTokens = (mode: 'light' | 'dark'): ThemeOptions => ({
     mode,
     ...(mode === 'light'
       ? {
-          // Tema Claro
-          primary: {
-            main: '#7c3aed',
-            light: '#a78bfa',
-            dark: '#6d28d9',
-            contrastText: '#ffffff',
-          },
-          secondary: {
-            main: '#0ea5e9',
-            light: '#38bdf8',
-            dark: '#0284c7',
-          },
-          background: {
-            default: '#f8fafc',
-            paper: '#ffffff',
-          },
-          text: {
-            primary: '#1e293b',
-            secondary: '#475569',
-          },
-          income: {
-            main: '#059669',
-            light: '#34d399',
-            dark: '#047857',
-            contrastText: '#ffffff',
-          },
-          expense: {
-            main: '#dc2626',
-            light: '#f87171',
-            dark: '#b91c1c',
-            contrastText: '#ffffff',
-          },
-          net: {
-            main: '#2563eb',
-            light: '#60a5fa',
-            dark: '#1d4ed8',
-            contrastText: '#ffffff',
-          },
-          divider: 'rgba(15, 23, 42, 0.12)',
-        }
+        // Tema Claro
+        primary: {
+          main: '#7c3aed',
+          light: '#a78bfa',
+          dark: '#6d28d9',
+          contrastText: '#ffffff',
+        },
+        secondary: {
+          main: '#0ea5e9',
+          light: '#38bdf8',
+          dark: '#0284c7',
+        },
+        background: {
+          default: '#f8fafc',
+          paper: '#ffffff',
+        },
+        text: {
+          primary: '#1e293b',
+          secondary: '#475569',
+        },
+        income: {
+          main: '#059669',
+          light: '#34d399',
+          dark: '#047857',
+          contrastText: '#ffffff',
+        },
+        expense: {
+          main: '#dc2626',
+          light: '#f87171',
+          dark: '#b91c1c',
+          contrastText: '#ffffff',
+        },
+        net: {
+          main: '#2563eb',
+          light: '#60a5fa',
+          dark: '#1d4ed8',
+          contrastText: '#ffffff',
+        },
+        divider: 'rgba(15, 23, 42, 0.12)',
+        gradients: {
+          auth: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        },
+      }
       : {
-          // Tema Escuro
-          primary: {
-            main: '#9b6dff',
-            light: '#b794ff',
-            dark: '#7c3aed',
-            contrastText: '#0a0118',
-          },
-          secondary: {
-            main: '#60a5fa',
-            light: '#93c5fd',
-            dark: '#3b82f6',
-          },
-          background: {
-            default: '#0a0118',
-            paper: '#1e0f35',
-          },
-          text: {
-            primary: '#f1f5f9',
-            secondary: '#cbd5e1',
-          },
-          income: {
-            main: '#34d399',
-            light: '#6ee7b7',
-            dark: '#059669',
-            contrastText: '#0a0118',
-          },
-          expense: {
-            main: '#f87171',
-            light: '#fca5a5',
-            dark: '#dc2626',
-            contrastText: '#0a0118',
-          },
-          net: {
-            main: '#60a5fa',
-            light: '#93c5fd',
-            dark: '#2563eb',
-            contrastText: '#0a0118',
-          },
-          divider: 'rgba(139, 92, 246, 0.25)',
-        }),
+        // Tema Escuro
+        primary: {
+          main: '#9b6dff',
+          light: '#b794ff',
+          dark: '#7c3aed',
+          contrastText: '#0a0118',
+        },
+        secondary: {
+          main: '#60a5fa',
+          light: '#93c5fd',
+          dark: '#3b82f6',
+        },
+        background: {
+          default: '#0a0118',
+          paper: '#1e0f35',
+        },
+        text: {
+          primary: '#f1f5f9',
+          secondary: '#cbd5e1',
+        },
+        income: {
+          main: '#34d399',
+          light: '#6ee7b7',
+          dark: '#059669',
+          contrastText: '#0a0118',
+        },
+        expense: {
+          main: '#f87171',
+          light: '#fca5a5',
+          dark: '#dc2626',
+          contrastText: '#0a0118',
+        },
+        net: {
+          main: '#60a5fa',
+          light: '#93c5fd',
+          dark: '#2563eb',
+          contrastText: '#0a0118',
+        },
+        divider: 'rgba(139, 92, 246, 0.25)',
+        gradients: {
+          auth: 'linear-gradient(135deg, #0a0118 0%, #1e0f35 100%)', // Adjusted for dark mode
+        },
+      }),
   },
   typography: {
     fontFamily: '"Inter", system-ui, -apple-system, sans-serif',
@@ -158,7 +170,7 @@ const getDesignTokens = (mode: 'light' | 'dark'): ThemeOptions => ({
       styleOverrides: {
         root: {
           borderRadius: 16,
-          boxShadow: mode === 'dark' 
+          boxShadow: mode === 'dark'
             ? '0 2px 8px rgba(0, 0, 0, 0.4)'
             : '0 1px 3px rgba(0, 0, 0, 0.06)',
           border: mode === 'dark'

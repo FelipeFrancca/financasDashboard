@@ -21,42 +21,55 @@ import {
     MenuItem,
     LinearProgress,
 } from '@mui/material';
-import { Add, Edit, Delete } from '@mui/icons-material';
-import { useQuery } from '@tanstack/react-query';
-import { budgetService, categoryService } from '../services/api';
+import { Edit, Delete } from '@mui/icons-material';
+import PageHeader from '../components/PageHeader';
 import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import { useForm, Controller } from 'react-hook-form';
+import {
+    useBudgets,
+    useCreateBudget,
+    useUpdateBudget,
+    useDeleteBudget
+} from '../hooks/api/useBudgets';
+import { useCategories } from '../hooks/api/useCategories';
+
+interface BudgetFormData {
+    name: string;
+    categoryId: string;
+    amount: number;
+    period: string;
+}
+
+const defaultValues: BudgetFormData = {
+    name: '',
+    categoryId: '',
+    amount: 0,
+    period: 'MONTHLY',
+};
 
 export default function BudgetsPage() {
     const [open, setOpen] = useState(false);
     const [editingBudget, setEditingBudget] = useState<any>(null);
-    const [formData, setFormData] = useState({
-        name: '',
-        categoryId: '',
-        amount: 0,
-        period: 'MONTHLY',
+
+    // Hooks
+    const { data: budgets = [] } = useBudgets();
+    const { data: categories = [] } = useCategories();
+    const createBudget = useCreateBudget();
+    const updateBudget = useUpdateBudget();
+    const deleteBudget = useDeleteBudget();
+
+    const { control, handleSubmit, reset } = useForm<BudgetFormData>({
+        defaultValues
     });
-
-    const { data: budgets = [], refetch } = useQuery({
-        queryKey: ['budgets'],
-        queryFn: budgetService.getAll,
-    });
-
-    const { data: categories = [] } = useQuery({
-        queryKey: ['categories'],
-        queryFn: categoryService.getAll,
-    });
-
-
 
     const handleOpen = (budget?: any) => {
-
         if (budget) {
             // MAPPING: Backend (category name) -> Frontend (categoryId)
             const categoryObj = categories.find((c: any) => c.name === budget.category);
             const categoryId = categoryObj ? categoryObj.id : '';
 
             setEditingBudget(budget);
-            setFormData({
+            reset({
                 name: budget.name || '',
                 categoryId: categoryId,
                 amount: budget.amount,
@@ -64,37 +77,31 @@ export default function BudgetsPage() {
             });
         } else {
             setEditingBudget(null);
-            setFormData({
-                name: '',
-                categoryId: '',
-                amount: 0,
-                period: 'MONTHLY',
-            });
+            reset(defaultValues);
         }
         setOpen(true);
     };
 
-    const handleSave = async () => {
+    const onSubmit = async (data: BudgetFormData) => {
         try {
             // MAPPING: Frontend (categoryId) -> Backend (category name)
-            const categoryObj = categories.find((c: any) => c.id === formData.categoryId);
+            const categoryObj = categories.find((c: any) => c.id === data.categoryId);
             const categoryName = categoryObj ? categoryObj.name : null;
 
             const payload = {
-                name: formData.name || (categoryName ? `Orçamento - ${categoryName}` : 'Novo Orçamento'),
-                amount: formData.amount,
-                period: formData.period,
+                name: data.name || (categoryName ? `Orçamento - ${categoryName}` : 'Novo Orçamento'),
+                amount: data.amount,
+                period: data.period,
                 category: categoryName,
                 startDate: new Date().toISOString(), // Default start date
             };
 
             if (editingBudget) {
-                await budgetService.update(editingBudget.id, payload);
+                await updateBudget.mutateAsync({ id: editingBudget.id, data: payload });
             } else {
-                await budgetService.create(payload);
+                await createBudget.mutateAsync(payload);
             }
             setOpen(false);
-            refetch();
             showSuccess(`Orçamento ${editingBudget ? 'atualizado' : 'criado'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
         } catch (error) {
             console.error('Error saving budget:', error);
@@ -115,8 +122,7 @@ export default function BudgetsPage() {
 
         if (result.isConfirmed) {
             try {
-                await budgetService.delete(id);
-                refetch();
+                await deleteBudget.mutateAsync(id);
                 showSuccess('O orçamento foi excluído.', { title: 'Excluído!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível excluir o orçamento.' });
@@ -124,18 +130,17 @@ export default function BudgetsPage() {
         }
     };
 
-
-
     return (
         <Container maxWidth="lg">
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-                <Typography variant="h4" fontWeight={700}>
-                    Orçamentos
-                </Typography>
-                <Button variant="contained" startIcon={<Add />} onClick={() => handleOpen()}>
-                    Novo Orçamento
-                </Button>
-            </Box>
+            <PageHeader
+                title="Orçamentos"
+                breadcrumbs={[
+                    { label: 'Dashboards', to: '/dashboards' },
+                    { label: 'Orçamentos' }
+                ]}
+                actionLabel="Novo Orçamento"
+                onAction={() => handleOpen()}
+            />
 
             <Card>
                 <CardContent>
@@ -207,57 +212,83 @@ export default function BudgetsPage() {
             </Card>
 
             <Dialog open={open} onClose={() => setOpen(false)}>
-                <DialogTitle>{editingBudget ? 'Editar Orçamento' : 'Novo Orçamento'}</DialogTitle>
-                <DialogContent>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
-                        <TextField
-                            label="Nome"
-                            fullWidth
-                            value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            placeholder="Ex: Alimentação Mensal"
-                        />
-                        <TextField
-                            select
-                            label="Categoria"
-                            fullWidth
-                            value={formData.categoryId}
-                            onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-                        >
-                            <MenuItem value="">
-                                <em>Geral (Todas as categorias)</em>
-                            </MenuItem>
-                            {categories.map((category: any) => (
-                                <MenuItem key={category.id} value={category.id}>
-                                    {category.name}
-                                </MenuItem>
-                            ))}
-                        </TextField>
-                        <TextField
-                            select
-                            label="Período"
-                            fullWidth
-                            value={formData.period}
-                            onChange={(e) => setFormData({ ...formData, period: e.target.value })}
-                        >
-                            <MenuItem value="MONTHLY">Mensal</MenuItem>
-                            <MenuItem value="YEARLY">Anual</MenuItem>
-                        </TextField>
-                        <TextField
-                            label="Limite"
-                            type="number"
-                            fullWidth
-                            value={formData.amount}
-                            onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) })}
-                        />
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleSave}>
-                        Salvar
-                    </Button>
-                </DialogActions>
+                <form onSubmit={handleSubmit(onSubmit)}>
+                    <DialogTitle>{editingBudget ? 'Editar Orçamento' : 'Novo Orçamento'}</DialogTitle>
+                    <DialogContent>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
+                            <Controller
+                                name="name"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Nome"
+                                        fullWidth
+                                        placeholder="Ex: Alimentação Mensal"
+                                    />
+                                )}
+                            />
+                            <Controller
+                                name="categoryId"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        select
+                                        label="Categoria"
+                                        fullWidth
+                                    >
+                                        <MenuItem value="">
+                                            <em>Geral (Todas as categorias)</em>
+                                        </MenuItem>
+                                        {categories.map((category: any) => (
+                                            <MenuItem key={category.id} value={category.id}>
+                                                {category.name}
+                                            </MenuItem>
+                                        ))}
+                                    </TextField>
+                                )}
+                            />
+                            <Controller
+                                name="period"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        select
+                                        label="Período"
+                                        fullWidth
+                                    >
+                                        <MenuItem value="MONTHLY">Mensal</MenuItem>
+                                        <MenuItem value="YEARLY">Anual</MenuItem>
+                                    </TextField>
+                                )}
+                            />
+                            <Controller
+                                name="amount"
+                                control={control}
+                                rules={{ required: 'Limite é obrigatório', min: { value: 0.01, message: 'Limite deve ser maior que zero' } }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Limite"
+                                        type="number"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                        onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    />
+                                )}
+                            />
+                        </Box>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setOpen(false)}>Cancelar</Button>
+                        <Button type="submit" variant="contained">
+                            Salvar
+                        </Button>
+                    </DialogActions>
+                </form>
             </Dialog>
         </Container>
     );
