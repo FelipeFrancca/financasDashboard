@@ -12,24 +12,36 @@ async function bootstrap() {
             console.warn('⚠️  Aviso: Prisma Client já pode estar gerado');
         }
 
-        // 2. Verificar Migrations (modo rápido em desenvolvimento)
-        console.log('\n🗄️  [2/3] Verificando Migrations...');
+        // 2. Verificar e Aplicar Migrations & Seeds
+        console.log('\n🗄️  [2/3] Verificando Banco de Dados...');
         const isDevelopment = process.env.NODE_ENV !== 'production';
 
-        if (isDevelopment) {
-            // Em desenvolvimento, apenas verifica o status sem aplicar
-            try {
-                execSync('npx prisma migrate status', {
-                    stdio: 'pipe',
-                    timeout: 5000 // 5 segundos de timeout
-                });
-                console.log('   ✅ Migrations OK (desenvolvimento)');
-            } catch (error) {
-                console.warn('   ⚠️  Migrations podem estar pendentes. Execute manualmente: npx prisma migrate dev');
-            }
-        } else {
-            // Em produção, aplica as migrations
+        try {
+            // Aplica migrations pendentes (tanto em dev quanto prod)
+            console.log('   🔄 Aplicando migrations...');
             execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+            console.log('   ✅ Migrations aplicadas com sucesso');
+
+            // Verifica se precisa rodar seeds (apenas se não houver usuários)
+            // Importação dinâmica para garantir que o client já foi gerado
+            const { PrismaClient } = require('@prisma/client');
+            const prisma = new PrismaClient();
+            
+            const userCount = await prisma.user.count();
+            if (userCount === 0) {
+                console.log('   🌱 Banco vazio detectado. Rodando seeds...');
+                execSync('npx prisma db seed', { stdio: 'inherit' });
+                console.log('   ✅ Seeds executados com sucesso');
+            } else {
+                console.log('   ℹ️  Banco já populado. Pulando seeds.');
+            }
+            
+            await prisma.$disconnect();
+
+        } catch (error) {
+            console.error('   ❌ Erro ao preparar banco de dados:', error);
+            // Em dev, não mata o processo para permitir correção manual
+            if (!isDevelopment) throw error;
         }
 
         // 3. Iniciar Servidor

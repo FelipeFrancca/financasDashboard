@@ -1,9 +1,13 @@
-import { Grid, Card, CardContent, Typography, Box, Skeleton } from '@mui/material';
-import TrendingUp from '@mui/icons-material/TrendingUp';
-import TrendingDown from '@mui/icons-material/TrendingDown';
-import AccountBalance from '@mui/icons-material/AccountBalance';
-import Shield from '@mui/icons-material/Shield';
+import { Grid, Card, CardContent, Typography, Box } from '@mui/material';
+import {
+  TrendingUp,
+  TrendingDown,
+  AccountBalance,
+  Shield
+} from '@mui/icons-material';
 import type { StatsSummary, Transaction } from '../types';
+import { MetricCardSkeleton } from './LoadingSkeleton';
+import { hoverLift, createStaggerDelay } from '../utils/animations';
 
 interface MetricsCardsProps {
   stats?: StatsSummary;
@@ -14,24 +18,7 @@ interface MetricsCardsProps {
 export default function MetricsCards({ stats, isLoading = false }: MetricsCardsProps) {
   // Se estiver carregando ou não tiver stats, mostra skeleton
   if (isLoading || !stats) {
-    return (
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        {[1, 2, 3, 4].map((item) => (
-          <Grid item xs={12} sm={6} lg={3} key={item}>
-            <Card sx={{ height: '100%', borderLeft: 3, borderColor: 'divider' }}>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                  <Skeleton variant="text" width={100} />
-                  <Skeleton variant="circular" width={28} height={28} />
-                </Box>
-                <Skeleton variant="rectangular" height={40} width="80%" />
-                <Skeleton variant="text" width={80} sx={{ mt: 1 }} />
-              </CardContent>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
-    );
+    return <MetricCardSkeleton count={4} />;
   }
 
   const metrics = [
@@ -77,18 +64,73 @@ export default function MetricsCards({ stats, isLoading = false }: MetricsCardsP
     <Grid container spacing={3} sx={{ mb: 4 }}>
       {metrics.map((metric, index) => (
         <Grid item xs={12} sm={6} lg={3} key={index}>
-          <Card sx={{ height: '100%', bgcolor: metric.bg, borderLeft: 3, borderColor: metric.color }}>
+          <Card
+            sx={{
+              height: '100%',
+              bgcolor: metric.bg,
+              borderLeft: 3,
+              borderColor: metric.color,
+              ...hoverLift,
+              animation: `slideInUp 400ms cubic-bezier(0.4, 0, 0.2, 1) ${createStaggerDelay(index, 100)}ms both`,
+              '@keyframes slideInUp': {
+                from: {
+                  opacity: 0,
+                  transform: 'translateY(20px)'
+                },
+                to: {
+                  opacity: 1,
+                  transform: 'translateY(0)'
+                },
+              },
+            }}
+          >
             <CardContent>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                <Typography variant="caption" color="text.secondary" textTransform="uppercase" fontWeight={600}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  mb: 2
+                }}
+              >
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  textTransform="uppercase"
+                  fontWeight={600}
+                  sx={{ letterSpacing: 0.5 }}
+                >
                   {metric.title}
                 </Typography>
-                <metric.icon sx={{ color: metric.color, fontSize: 28 }} />
+                <Box
+                  sx={{
+                    p: 1,
+                    borderRadius: 2,
+                    bgcolor: 'background.paper',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    '&:hover': {
+                      transform: 'rotate(360deg)',
+                    },
+                  }}
+                >
+                  <metric.icon sx={{ color: metric.color, fontSize: 24 }} />
+                </Box>
               </Box>
-              <Typography variant="h4" fontWeight={700} sx={{ color: metric.color }}>
+              <Typography
+                variant="h4"
+                fontWeight={700}
+                sx={{
+                  color: metric.color,
+                  mb: 0.5,
+                  fontSize: { xs: '1.75rem', sm: '2rem' },
+                }}
+              >
                 {typeof metric.value === 'number' ? formatCurrency(metric.value) : metric.value}
               </Typography>
-              <Typography variant="caption" color="text.secondary" sx={{ mt: 1 }}>
+              <Typography variant="caption" color="text.secondary">
                 Últimos 30 dias
               </Typography>
             </CardContent>
