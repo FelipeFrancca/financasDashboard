@@ -65,6 +65,10 @@ model Transaction {
   notes             String?
   isTemporary       Boolean  @default(false)
 
+  isThirdParty        Boolean  @default(false)
+  thirdPartyName      String?
+  thirdPartyDescription String?
+
   // Relacionamento com Account (opcional para manter compatibilidade)
   accountId String?
   account   Account? @relation("AccountTransactions", fields: [accountId], references: [id], onDelete: SetNull)
@@ -95,6 +99,7 @@ model Transaction {
   @@index([userId, date])
   @@index([userId, category, date])
   @@index([deletedAt])
+  @@index([isThirdParty])
   @@map("transactions")
 }
 

@@ -11,6 +11,7 @@ export type TransactionFilters = {
   installmentStatus?: string;
   search?: string;
   minAmount?: string;
+  ownership?: 'all' | 'client' | 'thirdParty';
 };
 
 export type TransactionCreateInput = Omit<Transaction, "id" | "createdAt" | "updatedAt">;
@@ -51,12 +52,21 @@ export async function getAllTransactions(filters: TransactionFilters = {}, userI
   if (filters.minAmount) {
     where.amount = { gte: parseFloat(filters.minAmount) };
   }
+
+  // Ownership filter
+  if (filters.ownership === 'client') {
+    where.isThirdParty = false;
+  } else if (filters.ownership === 'thirdParty') {
+    where.isThirdParty = true;
+  }
+
   if (filters.search) {
     where.OR = [
       { description: { contains: filters.search, mode: "insensitive" } },
       { category: { contains: filters.search, mode: "insensitive" } },
       { subcategory: { contains: filters.search, mode: "insensitive" } },
       { notes: { contains: filters.search, mode: "insensitive" } },
+      { thirdPartyName: { contains: filters.search, mode: "insensitive" } },
     ];
   }
 

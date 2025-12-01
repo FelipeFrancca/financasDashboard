@@ -15,6 +15,9 @@ export interface Transaction {
   installmentStatus: 'N/A' | 'Paga' | 'Pendente';
   notes?: string;
   isTemporary: boolean;
+  isThirdParty?: boolean;
+  thirdPartyName?: string;
+  thirdPartyDescription?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -30,6 +33,7 @@ export interface TransactionFilters {
   search?: string;
   minAmount?: string;
   dashboardId?: string;
+  ownership?: 'all' | 'client' | 'thirdParty';
 }
 
 export interface StatsSummary {

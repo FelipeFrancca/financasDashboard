@@ -1,8 +1,9 @@
-import { Card, CardHeader, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, Button, Chip, Box, CircularProgress } from '@mui/material';
+import { Card, CardHeader, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, Button, Chip, Box, CircularProgress, Tooltip } from '@mui/material';
 import Edit from '@mui/icons-material/Edit';
 import Delete from '@mui/icons-material/Delete';
 import Add from '@mui/icons-material/Add';
 import FileDownload from '@mui/icons-material/FileDownload';
+import Person from '@mui/icons-material/Person';
 import type { Transaction } from '../types';
 
 interface TransactionsTableProps {
@@ -63,7 +64,16 @@ export default function TransactionsTable({ transactions, isLoading, onEdit, onD
                     />
                   </TableCell>
                   <TableCell>{transaction.category}</TableCell>
-                  <TableCell>{transaction.description}</TableCell>
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {transaction.description}
+                      {transaction.isThirdParty && (
+                        <Tooltip title={`Compra de Terceiro: ${transaction.thirdPartyName || 'N/A'}`}>
+                          <Person fontSize="small" color="action" />
+                        </Tooltip>
+                      )}
+                    </Box>
+                  </TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600, color: transaction.entryType === 'Receita' ? 'success.main' : 'error.main' }}>
                     {formatCurrency(transaction.amount)}
                   </TableCell>

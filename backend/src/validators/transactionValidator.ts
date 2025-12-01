@@ -54,6 +54,9 @@ export const createTransactionSchema = z.object({
     installmentStatus: z.enum(installmentStatuses).default('N/A'),
     notes: z.string().max(1000, 'Notas muito longas').optional(),
     isTemporary: z.boolean().default(false),
+    isThirdParty: z.boolean().default(false),
+    thirdPartyName: z.string().max(100, 'Nome do terceiro muito longo').optional(),
+    thirdPartyDescription: z.string().max(500, 'Descrição do terceiro muito longa').optional(),
     dashboardId: z.string().optional(), // Para associar a um dashboard específico
 });
 
@@ -86,6 +89,7 @@ export const transactionQuerySchema = z.object({
     sortBy: z.enum(['date', 'amount', 'description', 'createdAt']).default('date'),
     sortOrder: z.enum(['asc', 'desc']).default('desc'),
     dashboardId: z.string().optional(),
+    ownership: z.enum(['all', 'client', 'thirdParty']).default('all'),
 }).refine(
     (data) => {
         // Valida que startDate não seja depois de endDate
@@ -145,6 +149,7 @@ export const statsQuerySchema = z.object({
     endDate: z.coerce.date().optional(),
     groupBy: z.enum(['month', 'category', 'entryType', 'institution']).default('month'),
     dashboardId: z.string().optional(),
+    ownership: z.enum(['all', 'client', 'thirdParty']).default('all'),
 });
 
 export type StatsQueryInput = z.infer<typeof statsQuerySchema>;

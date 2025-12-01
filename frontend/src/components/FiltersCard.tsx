@@ -111,6 +111,19 @@ export default function FiltersCard({ filters, onFiltersChange, transactions }: 
               <MenuItem value="Variável">Variável</MenuItem>
             </TextField>
           </Grid>
+          <Grid item xs={12} md={3}>
+            <TextField
+              fullWidth
+              select
+              label="Propriedade"
+              value={filters.ownership || 'all'}
+              onChange={(e) => handleChange('ownership', e.target.value)}
+            >
+              <MenuItem value="all">Todas</MenuItem>
+              <MenuItem value="client">Minhas</MenuItem>
+              <MenuItem value="thirdParty">Terceiros</MenuItem>
+            </TextField>
+          </Grid>
         </Grid>
 
         <Collapse in={showAdvanced}>

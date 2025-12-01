@@ -10,8 +10,12 @@ import {
   Grid,
   InputAdornment,
   FormControlLabel,
-  Switch
+  Switch,
+  Collapse,
+  Box,
+  Typography
 } from '@mui/material';
+import Person from '@mui/icons-material/Person';
 import { useForm, Controller } from 'react-hook-form';
 import { useCategories } from '../hooks/api/useCategories';
 import type { Transaction } from '../types';
@@ -39,6 +43,9 @@ interface TransactionFormData {
   installmentStatus: 'N/A' | 'Paga' | 'Pendente';
   notes: string;
   isTemporary: boolean;
+  isThirdParty: boolean;
+  thirdPartyName: string;
+  thirdPartyDescription: string;
 }
 
 const defaultValues: TransactionFormData = {
@@ -57,6 +64,9 @@ const defaultValues: TransactionFormData = {
   installmentStatus: 'N/A',
   notes: '',
   isTemporary: false,
+  isThirdParty: false,
+  thirdPartyName: '',
+  thirdPartyDescription: '',
 };
 
 export default function TransactionForm({ open, transaction, onClose, onSave }: TransactionFormProps) {
@@ -67,6 +77,7 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
   });
 
   const entryType = watch('entryType');
+  const isThirdParty = watch('isThirdParty');
 
   // Filter categories based on entry type
   const filteredCategories = categories.filter((cat: any) => {
@@ -81,6 +92,9 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
           ...transaction,
           date: new Date(transaction.date).toISOString().split('T')[0],
           amount: transaction.amount,
+          isThirdParty: transaction.isThirdParty || false,
+          thirdPartyName: transaction.thirdPartyName || '',
+          thirdPartyDescription: transaction.thirdPartyDescription || '',
         });
       } else {
         reset(defaultValues);
@@ -297,17 +311,84 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
                 )}
               />
             </Grid>
-            <Grid item xs={12}>
+            <Grid item xs={12} sm={6}>
               <Controller
                 name="isTemporary"
                 control={control}
                 render={({ field }) => (
                   <FormControlLabel
                     control={<Switch checked={field.value} onChange={field.onChange} />}
-                    label="Transação Temporária (não afeta saldo oficial)"
+                    label="Transação Temporária"
                   />
                 )}
               />
+            </Grid>
+
+            {/* Linha 8: Compra de Terceiro */}
+            <Grid item xs={12}>
+              <Box sx={{
+                p: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                borderRadius: 2,
+                bgcolor: 'action.hover'
+              }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: isThirdParty ? 2 : 0 }}>
+                  <Person color="action" sx={{ mr: 1 }} />
+                  <Controller
+                    name="isThirdParty"
+                    control={control}
+                    render={({ field }) => (
+                      <FormControlLabel
+                        control={<Switch checked={field.value} onChange={field.onChange} />}
+                        label={
+                          <Typography fontWeight={500}>
+                            Compra de Terceiro?
+                          </Typography>
+                        }
+                        sx={{ m: 0 }}
+                      />
+                    )}
+                  />
+                </Box>
+
+                <Collapse in={isThirdParty}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6}>
+                      <Controller
+                        name="thirdPartyName"
+                        control={control}
+                        render={({ field }) => (
+                          <TextField
+                            {...field}
+                            fullWidth
+                            label="Nome do Terceiro"
+                            size="small"
+                            placeholder="Ex: João Silva"
+                          />
+                        )}
+                      />
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Controller
+                        name="thirdPartyDescription"
+                        control={control}
+                        render={({ field }) => (
+                          <TextField
+                            {...field}
+                            fullWidth
+                            multiline
+                            rows={2}
+                            label="Descrição Detalhada (Opcional)"
+                            placeholder="Detalhes sobre a compra e o acordo..."
+                            size="small"
+                          />
+                        )}
+                      />
+                    </Grid>
+                  </Grid>
+                </Collapse>
+              </Box>
             </Grid>
           </Grid>
         </DialogContent>
