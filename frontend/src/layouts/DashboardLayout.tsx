@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, ReactNode } from 'react';
 import {
     Box,
     AppBar,
@@ -15,9 +15,13 @@ import {
     ListItem,
     ListItemButton,
     ListItemText,
+    Collapse,
     useTheme,
     useMediaQuery,
     CssBaseline,
+    Chip,
+    alpha,
+    Button,
 } from '@mui/material';
 import {
     Brightness4,
@@ -33,15 +37,37 @@ import {
     Notifications,
     Menu as MenuIcon,
     ChevronLeft,
+    ExpandLess,
+    ExpandMore,
+    Add,
+    VpnKey,
+    Settings,
+    Assessment,
+    Receipt,
+    People,
+    TrendingUp,
+    Person,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import UserAvatar from '../components/UserAvatar';
+import NotificationBell from '../components/NotificationBell';
 
-const drawerWidth = 240;
+const drawerWidth = 260;
 
 interface DashboardLayoutProps {
     mode: 'light' | 'dark';
     onToggleTheme: () => void;
+}
+
+interface MenuItemType {
+    text: string;
+    icon: ReactNode;
+    path?: string;
+    badge?: string | number;
+    children?: MenuItemType[];
+    divider?: boolean;
+    header?: string;
 }
 
 export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayoutProps) {
@@ -49,6 +75,7 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
     const isMobile = useMediaQuery(theme.breakpoints.down('md'));
     const [open, setOpen] = useState(!isMobile);
     const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+    const [expandedMenus, setExpandedMenus] = useState<string[]>(['dashboards', 'financial']);
     const navigate = useNavigate();
     const location = useLocation();
     const { dashboardId } = useParams<{ dashboardId: string }>();
@@ -58,16 +85,159 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
         setOpen(!open);
     };
 
-    const menuItems = [
-        { text: 'Visão Geral', icon: <DashboardIcon />, path: `/dashboard/${dashboardId}` },
-        { text: 'Contas', icon: <AccountBalanceWallet />, path: `/dashboard/${dashboardId}/accounts` },
-        { text: 'Categorias', icon: <Category />, path: `/dashboard/${dashboardId}/categories` },
-        { text: 'Metas', icon: <Flag />, path: `/dashboard/${dashboardId}/goals` },
-        { text: 'Orçamentos', icon: <AttachMoney />, path: `/dashboard/${dashboardId}/budgets` },
-        { text: 'Recorrências', icon: <EventRepeat />, path: `/dashboard/${dashboardId}/recurrences` },
-        { text: 'Transferências', icon: <CompareArrows />, path: `/dashboard/${dashboardId}/transfers` },
-        { text: 'Alertas', icon: <Notifications />, path: `/dashboard/${dashboardId}/alerts` },
+    const handleMenuExpand = (menu: string) => {
+        setExpandedMenus(prev =>
+            prev.includes(menu) ? prev.filter(m => m !== menu) : [...prev, menu]
+        );
+    };
+
+    // Determine if in dashboard context
+    const isInDashboard = location.pathname.includes('/dashboard/');
+    const basePath = isInDashboard ? `/dashboard/${dashboardId}` : '';
+
+    const menuStructure: MenuItemType[] = [
+        {
+            header: 'DASHBOARDS',
+            text: 'Meus Dashboards',
+            icon: <DashboardIcon />,
+            children: [
+                { text: 'Todos os Dashboards', icon: <Assessment />, path: '/dashboards' },
+                { text: 'Novo Dashboard', icon: <Add />, path: '/dashboards/new' },
+                { text: 'Entrar com Chave', icon: <VpnKey />, path: '/dashboards/join' },
+            ],
+        },
+        ...(isInDashboard ? [
+            {
+                header: 'GESTÃO FINANCEIRA',
+                text: 'Financeiro',
+                icon: <AttachMoney />,
+                divider: true,
+                children: [
+                    { text: 'Visão Geral', icon: <TrendingUp />, path: `${basePath}` },
+                    { text: 'Transações', icon: <Receipt />, path: `${basePath}/transactions` },
+                    { text: 'Contas', icon: <AccountBalanceWallet />, path: `${basePath}/accounts` },
+                    { text: 'Categorias', icon: <Category />, path: `${basePath}/categories` },
+                    { text: 'Transferências', icon: <CompareArrows />, path: `${basePath}/transfers` },
+                ],
+            },
+            {
+                header: 'PLANEJAMENTO',
+                text: 'Planejamento',
+                icon: <Flag />,
+                children: [
+                    { text: 'Orçamentos', icon: <AttachMoney />, path: `${basePath}/budgets` },
+                    { text: 'Metas', icon: <Flag />, path: `${basePath}/goals` },
+                    { text: 'Recorrências', icon: <EventRepeat />, path: `${basePath}/recurrences` },
+                ],
+            },
+            {
+                header: 'CONFIGURAÇÕES',
+                text: 'Configurações',
+                icon: <Settings />,
+                divider: true,
+                children: [
+                    { text: 'Membros', icon: <People />, path: `${basePath}/members` },
+                    { text: 'Alertas', icon: <Notifications />, path: `${basePath}/alerts` },
+                    { text: 'Configurações', icon: <Settings />, path: `${basePath}/settings` },
+                ],
+            },
+        ] : []),
     ];
+
+    const renderMenuItem = (item: MenuItemType, level: number = 0) => {
+        const hasChildren = item.children && item.children.length > 0;
+        const isExpanded = expandedMenus.includes(item.text.toLowerCase().replace(' ', '-'));
+        const isSelected = item.path === location.pathname;
+        const isParentSelected = item.children?.some(child => child.path === location.pathname);
+
+        return (
+            <Box key={item.text}>
+                {item.header && level === 0 && (
+                    <Typography
+                        variant="caption"
+                        sx={{
+                            px: 3,
+                            py: 1.5,
+                            display: 'block',
+                            fontWeight: 700,
+                            color: 'text.secondary',
+                            letterSpacing: 0.5,
+                            mt: level === 0 ? 2 : 0,
+                        }}
+                    >
+                        {item.header}
+                    </Typography>
+                )}
+
+                <ListItem disablePadding sx={{ display: 'block' }}>
+                    <ListItemButton
+                        selected={isSelected || isParentSelected}
+                        onClick={() => {
+                            if (hasChildren) {
+                                handleMenuExpand(item.text.toLowerCase().replace(' ', '-'));
+                            } else if (item.path) {
+                                navigate(item.path);
+                                if (isMobile) setOpen(false);
+                            }
+                        }}
+                        sx={{
+                            minHeight: 44,
+                            px: 2.5,
+                            pl: level === 0 ? 2.5 : 4,
+                            borderRadius: 1.5,
+                            mx: 1,
+                            mb: 0.5,
+                            '&.Mui-selected': {
+                                bgcolor: alpha(theme.palette.primary.main, 0.12),
+                                color: 'primary.main',
+                                '&:hover': {
+                                    bgcolor: alpha(theme.palette.primary.main, 0.2),
+                                },
+                            },
+                            '&:hover': {
+                                bgcolor: alpha(theme.palette.primary.main, 0.08),
+                            },
+                        }}
+                    >
+                        <ListItemIcon
+                            sx={{
+                                minWidth: 40,
+                                color: isSelected || isParentSelected ? 'primary.main' : 'text.secondary',
+                            }}
+                        >
+                            {item.icon}
+                        </ListItemIcon>
+                        <ListItemText
+                            primary={item.text}
+                            primaryTypographyProps={{
+                                fontSize: level === 0 ? 14 : 13,
+                                fontWeight: isSelected || (hasChildren && isParentSelected) ? 600 : 500,
+                            }}
+                        />
+                        {item.badge && (
+                            <Chip
+                                label={item.badge}
+                                size="small"
+                                color="primary"
+                                sx={{ height: 20, fontSize: 11 }}
+                            />
+                        )}
+                        {hasChildren && (isExpanded ? <ExpandLess /> : <ExpandMore />)}
+                    </ListItemButton>
+                </ListItem>
+
+                {hasChildren && (
+                    <Collapse in={isExpanded} timeout="auto" unmountOnExit>
+                        <List component="div" disablePadding>
+                            {item.children?.map(child => renderMenuItem(child, level + 1))}
+                        </List>
+                    </Collapse>
+                )}
+
+                {item.divider && <Divider sx={{ my: 1, mx: 2 }} />}
+            </Box>
+        );
+    };
 
     return (
         <Box sx={{ display: 'flex' }}>
@@ -79,12 +249,13 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                     background: mode === 'dark'
                         ? 'linear-gradient(120deg, #2d1b69 0%, #5b21b6 45%, #7c3aed 100%)'
                         : 'linear-gradient(120deg, #7c3aed 0%, #9333ea 50%, #a855f7 100%)',
+                    boxShadow: (theme) => theme.shadows[4],
                 }}
             >
                 <Toolbar>
                     <IconButton
                         color="inherit"
-                        aria-label="open drawer"
+                        aria-label="toggle drawer"
                         onClick={handleDrawerToggle}
                         edge="start"
                         sx={{ mr: 2 }}
@@ -92,11 +263,16 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                         {open ? <ChevronLeft /> : <MenuIcon />}
                     </IconButton>
 
-                    <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1, fontWeight: 700, letterSpacing: 1 }}>
-                        FINANÇAS 360°
-                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
+                        <AccountBalanceWallet sx={{ mr: 1, fontSize: 28 }} />
+                        <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 700, letterSpacing: 1 }}>
+                            FINANÇAS 360°
+                        </Typography>
+                    </Box>
 
-                    <IconButton color="inherit" onClick={onToggleTheme}>
+                    <NotificationBell />
+
+                    <IconButton color="inherit" onClick={onToggleTheme} sx={{ mr: 1 }}>
                         {mode === 'dark' ? <Brightness7 /> : <Brightness4 />}
                     </IconButton>
 
@@ -108,7 +284,12 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                         <Avatar
                             src={user?.avatar}
                             alt={user?.name || user?.email}
-                            sx={{ width: 32, height: 32 }}
+                            sx={{
+                                width: 36,
+                                height: 36,
+                                border: '2px solid',
+                                borderColor: 'rgba(255, 255, 255, 0.3)',
+                            }}
                         >
                             {!user?.avatar && (user?.name?.[0] || user?.email?.[0] || '?').toUpperCase()}
                         </Avatar>
@@ -120,8 +301,16 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                         onClose={() => setAnchorEl(null)}
                         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
                         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+                        PaperProps={{
+                            elevation: 8,
+                            sx: {
+                                mt: 1,
+                                minWidth: 220,
+                                borderRadius: 2,
+                            },
+                        }}
                     >
-                        <Box sx={{ px: 2, py: 1, minWidth: 200 }}>
+                        <Box sx={{ px: 2, py: 1.5 }}>
                             <Typography variant="subtitle2" fontWeight="bold">
                                 {user?.name || 'Usuário'}
                             </Typography>
@@ -130,20 +319,28 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                             </Typography>
                         </Box>
                         <Divider />
-                        <MenuItem onClick={() => navigate('/dashboards')}>
+                        <MenuItem onClick={() => { navigate('/dashboards'); setAnchorEl(null); }}>
                             <ListItemIcon>
                                 <DashboardIcon fontSize="small" />
                             </ListItemIcon>
                             Meus Dashboards
                         </MenuItem>
+                        <MenuItem onClick={() => { navigate('/profile'); setAnchorEl(null); }}>
+                            <ListItemIcon>
+                                <Settings fontSize="small" />
+                            </ListItemIcon>
+                            Meu Perfil
+                        </MenuItem>
+                        <Divider />
                         <MenuItem
                             onClick={() => {
                                 setAnchorEl(null);
                                 logout();
                                 navigate('/login');
                             }}
+                            sx={{ color: 'error.main' }}
                         >
-                            <ListItemIcon>
+                            <ListItemIcon sx={{ color: 'error.main' }}>
                                 <Logout fontSize="small" />
                             </ListItemIcon>
                             Sair
@@ -159,33 +356,84 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                 sx={{
                     width: drawerWidth,
                     flexShrink: 0,
-                    [`& .MuiDrawer-paper`]: { width: drawerWidth, boxSizing: 'border-box' },
+                    [`& .MuiDrawer-paper`]: {
+                        width: drawerWidth,
+                        boxSizing: 'border-box',
+                        borderRight: `1px solid ${theme.palette.divider}`,
+                        bgcolor: mode === 'dark' ? 'background.paper' : 'background.default',
+                    },
                 }}
             >
                 <Toolbar />
-                <Box sx={{ overflow: 'auto' }}>
+                <Box sx={{ overflow: 'auto', py: 1 }}>
                     <List>
-                        {menuItems.map((item) => (
-                            <ListItem key={item.text} disablePadding>
-                                <ListItemButton
-                                    selected={location.pathname === item.path || (item.path !== `/dashboard/${dashboardId}` && location.pathname.startsWith(item.path))}
-                                    onClick={() => {
-                                        navigate(item.path);
-                                        if (isMobile) setOpen(false);
-                                    }}
-                                >
-                                    <ListItemIcon sx={{ color: location.pathname === item.path ? 'primary.main' : 'inherit' }}>
-                                        {item.icon}
-                                    </ListItemIcon>
-                                    <ListItemText primary={item.text} />
-                                </ListItemButton>
-                            </ListItem>
-                        ))}
+                        {menuStructure.map(item => renderMenuItem(item))}
                     </List>
+                </Box>
+
+                {/* Footer with user info */}
+                <Box
+                    sx={{
+                        mt: 'auto',
+                        p: 2.5,
+                        borderTop: `1px solid ${theme.palette.divider}`,
+                        bgcolor: alpha(theme.palette.primary.main, 0.05),
+                    }}
+                >
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5 }}>
+                        <UserAvatar user={user || undefined} size="medium" />
+                        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                            <Typography variant="body2" fontWeight={600} noWrap>
+                                Olá, {user?.name?.split(' ')[0] || 'Usuário'}!
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap>
+                                {user?.email}
+                            </Typography>
+                        </Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button
+                            fullWidth
+                            size="small"
+                            variant="outlined"
+                            startIcon={<Person />}
+                            onClick={() => navigate('/profile')}
+                        >
+                            Perfil
+                        </Button>
+                        <IconButton
+                            size="small"
+                            onClick={() => {
+                                logout();
+                                navigate('/login');
+                            }}
+                            color="error"
+                            title="Sair"
+                        >
+                            <Logout fontSize="small" />
+                        </IconButton>
+                    </Box>
                 </Box>
             </Drawer>
 
-            <Box component="main" sx={{ flexGrow: 1, p: 3, width: `calc(100% - ${open ? drawerWidth : 0}px)`, transition: theme.transitions.create('width') }}>
+            <Box
+                component="main"
+                sx={{
+                    flexGrow: 1,
+                    p: 3,
+                    width: `calc(100% - ${open ? drawerWidth : 0}px)`,
+                    transition: theme.transitions.create(['width', 'margin'], {
+                        easing: theme.transitions.easing.sharp,
+                        duration: theme.transitions.duration.leavingScreen,
+                    }),
+                    ...(open && {
+                        transition: theme.transitions.create(['width', 'margin'], {
+                            easing: theme.transitions.easing.easeOut,
+                            duration: theme.transitions.duration.enteringScreen,
+                        }),
+                    }),
+                }}
+            >
                 <Toolbar />
                 <Outlet />
             </Box>

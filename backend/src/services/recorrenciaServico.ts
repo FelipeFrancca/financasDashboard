@@ -2,22 +2,28 @@ import { RecurringTransaction, RecurrenceFrequency } from '@prisma/client';
 import { prisma } from '../database/conexao';
 import { logger } from '../utils/logger';
 
-export async function createRecurring(userId: string, data: any) {
+export async function createRecurring(dashboardId: string, userId: string, data: any) {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
     // Calcular próxima data
     const nextDate = new Date(data.startDate); // Simplificado
 
     return prisma.recurringTransaction.create({
         data: {
             ...data,
-            userId,
+            dashboardId,
             nextDate,
         },
     });
 }
 
-export async function getRecurring(userId: string) {
+export async function getRecurring(dashboardId: string, userId: string) {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     return prisma.recurringTransaction.findMany({
-        where: { userId, deletedAt: null },
+        where: { dashboardId, deletedAt: null },
         orderBy: { nextDate: 'asc' },
     });
 }
@@ -39,14 +45,15 @@ export async function processDueTransactions() {
         // 1. Criar transação real
         await prisma.transaction.create({
             data: {
-                userId: rec.userId,
+                dashboardId: rec.dashboardId,
                 accountId: rec.accountId!,
                 amount: rec.amount,
-                type: rec.entryType === 'Receita' ? 'INCOME' : 'EXPENSE', // Ajustar enum
+                entryType: rec.entryType,
+                flowType: rec.flowType,
                 category: rec.category,
+                subcategory: rec.subcategory,
                 description: rec.description,
                 date: new Date(),
-                status: 'COMPLETED',
             },
         });
 
@@ -54,7 +61,8 @@ export async function processDueTransactions() {
         const nextDate = new Date(rec.nextDate);
         if (rec.frequency === 'MONTHLY') nextDate.setMonth(nextDate.getMonth() + rec.interval);
         else if (rec.frequency === 'WEEKLY') nextDate.setDate(nextDate.getDate() + (7 * rec.interval));
-        // ... outros casos
+        else if (rec.frequency === 'DAILY') nextDate.setDate(nextDate.getDate() + rec.interval);
+        else if (rec.frequency === 'YEARLY') nextDate.setFullYear(nextDate.getFullYear() + rec.interval);
 
         await prisma.recurringTransaction.update({
             where: { id: rec.id },
@@ -64,4 +72,24 @@ export async function processDueTransactions() {
             },
         });
     }
+}
+
+export async function updateRecurring(id: string, dashboardId: string, userId: string, data: any) {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
+    return prisma.recurringTransaction.updateMany({
+        where: { id, dashboardId },
+        data,
+    });
+}
+
+export async function deleteRecurring(id: string, dashboardId: string, userId: string) {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
+    return prisma.recurringTransaction.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+    });
 }

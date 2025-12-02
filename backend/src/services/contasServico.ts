@@ -31,14 +31,18 @@ import {
  */
 export async function createAccount(
     dto: CreateAccountDTO,
+    dashboardId: string,
     userId: string
 ): Promise<Account> {
-    logger.info('Criando nova conta', 'AccountService', { userId, type: dto.type });
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
+    logger.info('Criando nova conta', 'AccountService', { dashboardId, type: dto.type });
 
     // Se for marcar como primária, desmarcar outras
     if (dto.isPrimary) {
         await prisma.account.updateMany({
-            where: { userId, isPrimary: true },
+            where: { dashboardId, isPrimary: true },
             data: { isPrimary: false },
         });
     }
@@ -50,27 +54,31 @@ export async function createAccount(
             availableBalance: dto.type === AccountType.CREDIT_CARD
                 ? (dto.creditLimit || 0) - dto.initialBalance
                 : dto.initialBalance,
-            userId,
+            dashboardId,
         },
     });
 
     logger.info('Conta criada com sucesso', 'AccountService', {
         accountId: account.id,
-        userId,
+        dashboardId,
     });
 
     return account;
 }
 
 /**
- * Lista contas do usuário com filtros
+ * Lista contas do dashboard com filtros
  */
 export async function getAccounts(
     dto: QueryAccountsDTO,
+    dashboardId: string,
     userId: string
 ): Promise<{ data: Account[]; total: number }> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     const where: Prisma.AccountWhereInput = {
-        userId,
+        dashboardId,
         ...(dto.type && { type: dto.type }),
         ...(dto.status && { status: dto.status }),
         ...(dto.currency && { currency: dto.currency }),
@@ -99,10 +107,14 @@ export async function getAccounts(
  */
 export async function getAccountById(
     id: string,
+    dashboardId: string,
     userId: string
 ): Promise<Account> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     const account = await prisma.account.findFirst({
-        where: { id, userId, deletedAt: null },
+        where: { id, dashboardId, deletedAt: null },
     });
 
     if (!account) {
@@ -117,26 +129,27 @@ export async function getAccountById(
  */
 export async function getAccountWithStats(
     id: string,
+    dashboardId: string,
     userId: string
 ): Promise<AccountWithStatsDTO> {
-    const account = await getAccountById(id, userId);
+    const account = await getAccountById(id, dashboardId, userId);
 
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const [totalTransactions, lastTransaction, monthlyStats] = await Promise.all([
         prisma.transaction.count({
-            where: { accountId: id, userId, deletedAt: null },
+            where: { accountId: id, dashboardId, deletedAt: null },
         }),
         prisma.transaction.findFirst({
-            where: { accountId: id, userId, deletedAt: null },
+            where: { accountId: id, dashboardId, deletedAt: null },
             orderBy: { date: 'desc' },
             select: { date: true },
         }),
         prisma.transaction.findMany({
             where: {
                 accountId: id,
-                userId,
+                dashboardId,
                 deletedAt: null,
                 date: { gte: firstDayOfMonth },
             },
@@ -146,11 +159,11 @@ export async function getAccountWithStats(
 
     const monthlyIncome = monthlyStats
         .filter((t) => t.entryType === 'Receita')
-        .reduce((sum, t) => sum + t.amount, 0);
+        .reduce((sum, t) => sum + Number(t.amount), 0);
 
     const monthlyExpense = monthlyStats
         .filter((t) => t.entryType === 'Despesa')
-        .reduce((sum, t) => sum + t.amount, 0);
+        .reduce((sum, t) => sum + Number(t.amount), 0);
 
     return {
         ...account,
@@ -159,7 +172,7 @@ export async function getAccountWithStats(
             lastTransaction: lastTransaction?.date || null,
             monthlyIncome,
             monthlyExpense,
-            balance: account.currentBalance,
+            balance: Number(account.currentBalance),
         },
     };
 }
@@ -170,15 +183,19 @@ export async function getAccountWithStats(
 export async function updateAccount(
     id: string,
     dto: UpdateAccountDTO,
+    dashboardId: string,
     userId: string
 ): Promise<Account> {
-    // Verificar se conta existe e pertence ao usuário
-    await getAccountById(id, userId);
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
+    // Verificar se conta existe e pertence ao dashboard
+    await getAccountById(id, dashboardId, userId);
 
     // Se for marcar como primária, desmarcar outras
     if (dto.isPrimary) {
         await prisma.account.updateMany({
-            where: { userId, isPrimary: true, id: { not: id } },
+            where: { dashboardId, isPrimary: true, id: { not: id } },
             data: { isPrimary: false },
         });
     }
@@ -188,7 +205,7 @@ export async function updateAccount(
         data: dto,
     });
 
-    logger.info('Conta atualizada', 'AccountService', { accountId: id, userId });
+    logger.info('Conta atualizada', 'AccountService', { accountId: id, dashboardId });
 
     return account;
 }
@@ -198,14 +215,18 @@ export async function updateAccount(
  */
 export async function deleteAccount(
     id: string,
+    dashboardId: string,
     userId: string
 ): Promise<void> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
     // Verificar se conta existe
-    const account = await getAccountById(id, userId);
+    const account = await getAccountById(id, dashboardId, userId);
 
     // Verificar se tem transações
     const transactionsCount = await prisma.transaction.count({
-        where: { accountId: id, deletedAt: null },
+        where: { accountId: id, dashboardId, deletedAt: null },
     });
 
     if (transactionsCount > 0) {
@@ -224,7 +245,7 @@ export async function deleteAccount(
 
     logger.info('Conta deletada (soft delete)', 'AccountService', {
         accountId: id,
-        userId,
+        dashboardId,
     });
 }
 
@@ -237,14 +258,15 @@ export async function deleteAccount(
  */
 export async function recalculateBalance(
     accountId: string,
+    dashboardId: string,
     userId: string
 ): Promise<Account> {
-    const account = await getAccountById(accountId, userId);
+    const account = await getAccountById(accountId, dashboardId, userId);
 
     const transactions = await prisma.transaction.findMany({
         where: {
             accountId,
-            userId,
+            dashboardId,
             deletedAt: null,
         },
         select: {
@@ -255,9 +277,9 @@ export async function recalculateBalance(
 
     const calculatedBalance = transactions.reduce((balance, tx) => {
         return tx.entryType === 'Receita'
-            ? balance + tx.amount
-            : balance - tx.amount;
-    }, account.initialBalance);
+            ? balance + Number(tx.amount)
+            : balance - Number(tx.amount);
+    }, Number(account.initialBalance));
 
     const availableBalance = account.type === AccountType.CREDIT_CARD
         ? (account.creditLimit || 0) - calculatedBalance
@@ -286,18 +308,22 @@ export async function recalculateBalance(
 export async function updateBalance(
     accountId: string,
     dto: UpdateBalanceDTO,
+    dashboardId: string,
     userId: string
 ): Promise<Account> {
-    const account = await getAccountById(accountId, userId);
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
+    const account = await getAccountById(accountId, dashboardId, userId);
 
     let newBalance: number;
 
     switch (dto.operation) {
         case 'ADD':
-            newBalance = account.currentBalance + dto.amount;
+            newBalance = Number(account.currentBalance) + dto.amount;
             break;
         case 'SUBTRACT':
-            newBalance = account.currentBalance - dto.amount;
+            newBalance = Number(account.currentBalance) - dto.amount;
             break;
         case 'SET':
             newBalance = dto.amount;
@@ -333,11 +359,12 @@ export async function updateBalance(
 export async function reconcileAccount(
     accountId: string,
     dto: ReconcileAccountDTO,
+    dashboardId: string,
     userId: string
 ): Promise<ReconciliationResultDTO> {
-    const account = await recalculateBalance(accountId, userId);
+    const account = await recalculateBalance(accountId, dashboardId, userId);
 
-    const difference = account.currentBalance - dto.statementBalance;
+    const difference = Number(account.currentBalance) - dto.statementBalance;
     const isReconciled = Math.abs(difference) < 0.01; // Tolerância de 1 centavo
 
     logger.info('Reconciliação realizada', 'AccountService', {
@@ -350,7 +377,7 @@ export async function reconcileAccount(
 
     return {
         accountId,
-        calculatedBalance: account.currentBalance,
+        calculatedBalance: Number(account.currentBalance),
         statementBalance: dto.statementBalance,
         difference,
         isReconciled,
@@ -364,49 +391,62 @@ export async function reconcileAccount(
 // ============================================
 
 /**
- * Valida se conta existe e pertence ao usuário
+ * Valida se conta existe e pertence ao dashboard
  */
 export async function validateAccountOwnership(
     accountId: string,
+    dashboardId: string,
     userId: string
 ): Promise<boolean> {
-    const account = await prisma.account.findFirst({
-        where: { id: accountId, userId, deletedAt: null },
-    });
-    return !!account;
+    const { checkPermission } = await import('./paineisServico');
+    try {
+        await checkPermission(userId, dashboardId);
+        const account = await prisma.account.findFirst({
+            where: { id: accountId, dashboardId, deletedAt: null },
+        });
+        return !!account;
+    } catch {
+        return false;
+    }
 }
 
 /**
- * Obtém conta primária do usuário
+ * Obtém conta primária do dashboard
  */
-export async function getPrimaryAccount(userId: string): Promise<Account | null> {
+export async function getPrimaryAccount(dashboardId: string, userId: string): Promise<Account | null> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     return prisma.account.findFirst({
-        where: { userId, isPrimary: true, status: AccountStatus.ACTIVE, deletedAt: null },
+        where: { dashboardId, isPrimary: true, status: AccountStatus.ACTIVE, deletedAt: null },
     });
 }
 
 /**
  * Obtém resumo de todas as contas
  */
-export async function getAccountsSummary(userId: string): Promise<{
+export async function getAccountsSummary(dashboardId: string, userId: string): Promise<{
     totalAccounts: number;
     totalBalance: number;
     totalAvailable: number;
     byType: Record<AccountType, { count: number; balance: number }>;
 }> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     const accounts = await prisma.account.findMany({
-        where: { userId, deletedAt: null, status: AccountStatus.ACTIVE },
+        where: { dashboardId, deletedAt: null, status: AccountStatus.ACTIVE },
     });
 
-    const totalBalance = accounts.reduce((sum, acc) => sum + acc.currentBalance, 0);
-    const totalAvailable = accounts.reduce((sum, acc) => sum + acc.availableBalance, 0);
+    const totalBalance = accounts.reduce((sum, acc) => sum + Number(acc.currentBalance), 0);
+    const totalAvailable = accounts.reduce((sum, acc) => sum + Number(acc.availableBalance), 0);
 
     const byType = accounts.reduce((acc, account) => {
         if (!acc[account.type]) {
             acc[account.type] = { count: 0, balance: 0 };
         }
         acc[account.type].count++;
-        acc[account.type].balance += account.currentBalance;
+        acc[account.type].balance += Number(account.currentBalance);
         return acc;
     }, {} as Record<AccountType, { count: number; balance: number }>);
 

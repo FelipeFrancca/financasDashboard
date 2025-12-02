@@ -5,6 +5,9 @@ import {
   useTheme,
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
+import AddIcon from '@mui/icons-material/Add';
+import UploadFileIcon from '@mui/icons-material/UploadFile';
+import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import type { Transaction, TransactionFilters } from '../types';
 import MetricsCards from '../components/MetricsCards';
 import FiltersCard from '../components/FiltersCard';
@@ -14,6 +17,8 @@ import TransactionForm from '../components/TransactionForm';
 import QuickEntryForm from '../components/QuickEntryForm';
 import FileUpload from '../components/FileUpload';
 import PageHeader from '../components/PageHeader';
+import EmptyState from '../components/EmptyState';
+import { DashboardSkeleton } from '../components/Skeletons';
 import { showSuccess, showError, showConfirm, showWarning } from '../utils/notifications';
 import {
   useTransactions,
@@ -138,6 +143,80 @@ export default function DashboardFinancial() {
     showSuccess('Arquivo CSV baixado com sucesso.', { title: 'Exportado!' });
   }, [transactions]);
 
+  const hasData = transactions.length > 0;
+
+  // Loading state
+  if (isLoading) {
+    return (
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <PageHeader
+          title="Visão Geral"
+          breadcrumbs={[
+            { label: 'Dashboards', to: '/dashboards' },
+            { label: 'Financeiro' }
+          ]}
+        />
+        <DashboardSkeleton />
+      </Container>
+    );
+  }
+
+  // Empty state
+  if (!hasData) {
+    return (
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <PageHeader
+          title="Visão Geral"
+          breadcrumbs={[
+            { label: 'Dashboards', to: '/dashboards' },
+            { label: 'Financeiro' }
+          ]}
+        />
+        <EmptyState
+          icon={<ReceiptLongIcon sx={{ fontSize: '80px' }} />}
+          title="Nenhuma transação ainda"
+          description="Comece adicionando sua primeira transação manualmente ou importe dados de um arquivo CSV/Excel para começar a visualizar seus gráficos e relatórios financeiros."
+          actions={[
+            {
+              label: 'Adicionar Transação',
+              onClick: handleNewTransaction,
+              variant: 'contained',
+              startIcon: <AddIcon />,
+            },
+            {
+              label: 'Importar Dados',
+              onClick: () => {
+                // Scroll to import section or open import dialog
+                const uploadSection = document.querySelector('#upload-section');
+                uploadSection?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              },
+              variant: 'outlined',
+              startIcon: <UploadFileIcon />,
+            },
+          ]}
+        />
+        
+        {/* Show upload and quick entry even when empty */}
+        <Box id="upload-section" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(3, 1fr)' }, gap: 3, mt: 4 }}>
+          <FileUpload onImport={handleImport} />
+          <QuickEntryForm onSave={handleSaveTransaction} onRefetch={refetch} />
+        </Box>
+
+        {/* Transaction Form */}
+        <TransactionForm
+          open={showTransactionForm}
+          transaction={selectedTransaction}
+          onClose={() => {
+            setShowTransactionForm(false);
+            setSelectedTransaction(null);
+          }}
+          onSave={handleSaveTransaction}
+        />
+      </Container>
+    );
+  }
+
+  // Normal state with data
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <PageHeader

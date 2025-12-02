@@ -17,6 +17,7 @@ import categoriasRotas from "./routes/categoriasRotas";
 import metasRotas from "./routes/metasRotas";
 import alertasRotas from "./routes/alertasRotas";
 import recorrenciaRotas from "./routes/recorrenciaRotas";
+import notificationPreferencesRotas from "./routes/notificationPreferencesRotas";
 
 // Middlewares e Utils
 import { logger } from "./utils/logger";
@@ -51,7 +52,7 @@ app.use(helmet({
 }));
 
 // CORS Configuration - Suporta múltiplas origens
-const corsOrigin = process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || 'http://localhost:5173';
+const corsOrigin = process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:5173';
 
 // Se CORS_ORIGIN for *, permite todas as origens
 if (corsOrigin === '*') {
@@ -61,7 +62,7 @@ if (corsOrigin === '*') {
   }));
 } else {
   const allowedOrigins = corsOrigin.split(',').map(origin => origin.trim());
-  
+
   app.use(cors({
     origin: (origin, callback) => {
       // Permite requisições sem origin (como mobile apps, curl, postman, ou requisições do mesmo domínio)
@@ -71,7 +72,8 @@ if (corsOrigin === '*') {
       if (allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        logger.warn(`CORS blocked origin: ${origin}`, 'CORS');
+        callback(null, false); // Changed from error to false to avoid crash
       }
     },
     credentials: true,
@@ -122,6 +124,7 @@ app.use("/api/categories", categoriasRotas);
 app.use("/api/goals", metasRotas);
 app.use("/api/alerts", alertasRotas);
 app.use("/api/recurrences", recorrenciaRotas);
+app.use("/api/notification-preferences", notificationPreferencesRotas);
 
 // Health check
 app.get("/health", async (_req, res) => {
@@ -161,13 +164,13 @@ app.get("/health", async (_req, res) => {
 const isProduction = process.env.NODE_ENV === "production";
 if (isProduction) {
   const publicPath = path.join(__dirname, "..", "public");
-  
+
   // Serve arquivos estáticos com cache
   app.use(express.static(publicPath, {
     maxAge: '1y',
     etag: true,
   }));
-  
+
   // Catch-all apenas para rotas não-API (SPA fallback)
   app.get("*", (req, res, next) => {
     // Se for uma rota de API, passa para o próximo handler

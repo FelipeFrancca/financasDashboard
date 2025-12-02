@@ -23,6 +23,10 @@ const BudgetsPage = lazy(() => import('./pages/BudgetsPage'));
 const RecurrencesPage = lazy(() => import('./pages/RecurrencesPage'));
 const TransfersPage = lazy(() => import('./pages/TransfersPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
+const JoinDashboardPage = lazy(() => import('./pages/JoinDashboardPage'));
+const CreateDashboardPage = lazy(() => import('./pages/CreateDashboardPage'));
+const ProfilePage = lazy(() => import('./pages/ProfilePage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 
 const PageLoader = () => (
   <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -69,32 +73,35 @@ function App() {
               <Route path="/auth/callback" element={<GoogleCallbackPage />} />
               <Route path="/shared/:code" element={<SharedPreviewPage />} />
 
-              {/* Private routes */}
+              {/* All authenticated routes use DashboardLayout */}
               <Route
-                path="/dashboards"
-                element={
-                  <PrivateRoute>
-                    <HomePage mode={mode} onToggleTheme={toggleTheme} />
-                  </PrivateRoute>
-                }
-              />
-
-              <Route
-                path="/dashboard/:dashboardId"
                 element={
                   <PrivateRoute>
                     <DashboardLayout mode={mode} onToggleTheme={toggleTheme} />
                   </PrivateRoute>
                 }
               >
-                <Route index element={<DashboardFinancial />} />
-                <Route path="accounts" element={<AccountsPage />} />
-                <Route path="categories" element={<CategoriesPage />} />
-                <Route path="goals" element={<GoalsPage />} />
-                <Route path="budgets" element={<BudgetsPage />} />
-                <Route path="recurrences" element={<RecurrencesPage />} />
-                <Route path="transfers" element={<TransfersPage />} />
-                <Route path="alerts" element={<AlertsPage />} />
+                {/* Dashboard listing */}
+                <Route path="/dashboards" element={<HomePage />} />
+                <Route path="/dashboards/new" element={<CreateDashboardPage />} />
+                <Route path="/dashboards/join" element={<JoinDashboardPage />} />
+                
+                {/* Individual dashboard routes */}
+                <Route path="/dashboard/:dashboardId" element={<DashboardFinancial />} />
+                <Route path="/dashboard/:dashboardId/accounts" element={<AccountsPage />} />
+                <Route path="/dashboard/:dashboardId/categories" element={<CategoriesPage />} />
+                <Route path="/dashboard/:dashboardId/goals" element={<GoalsPage />} />
+                <Route path="/dashboard/:dashboardId/budgets" element={<BudgetsPage />} />
+                <Route path="/dashboard/:dashboardId/recurrences" element={<RecurrencesPage />} />
+                <Route path="/dashboard/:dashboardId/transfers" element={<TransfersPage />} />
+                <Route path="/dashboard/:dashboardId/alerts" element={<AlertsPage />} />
+                <Route path="/dashboard/:dashboardId/members" element={<div>Members Page</div>} />
+                <Route path="/dashboard/:dashboardId/settings" element={<div>Dashboard Settings Page</div>} />
+                <Route path="/dashboard/:dashboardId/transactions" element={<div>Transactions Page</div>} />
+                
+                {/* User profile and notifications */}
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/notifications" element={<NotificationsPage />} />
               </Route>
 
               {/* Catch all */}

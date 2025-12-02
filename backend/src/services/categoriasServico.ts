@@ -19,14 +19,18 @@ import { NotFoundError, ValidationError } from '../utils/AppError';
 
 export async function createCategory(
     dto: CreateCategoryDTO,
+    dashboardId: string,
     userId: string
 ): Promise<Category> {
-    // Validar se parent existe e pertence ao usuário (ou é sistema)
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
+    // Validar se parent existe e pertence ao dashboard (ou é sistema)
     if (dto.parentId) {
         const parent = await prisma.category.findFirst({
             where: {
                 id: dto.parentId,
-                OR: [{ userId }, { isSystem: true }],
+                OR: [{ dashboardId }, { isSystem: true, dashboardId: null }],
                 deletedAt: null,
             },
         });
@@ -41,11 +45,11 @@ export async function createCategory(
         }
     }
 
-    // Verificar duplicidade de nome para o usuário
+    // Verificar duplicidade de nome para o dashboard
     const existing = await prisma.category.findFirst({
         where: {
             name: dto.name,
-            userId,
+            dashboardId,
             type: dto.type,
             deletedAt: null,
         },
@@ -58,26 +62,31 @@ export async function createCategory(
     const category = await prisma.category.create({
         data: {
             ...dto,
-            userId,
+            dashboardId,
             isSystem: false,
         },
     });
 
-    logger.info('Categoria criada', 'CategoryService', { id: category.id, userId });
+    logger.info('Categoria criada', 'CategoryService', { id: category.id, dashboardId });
     return category;
 }
 
 export async function getCategories(
     dto: QueryCategoriesDTO,
+    dashboardId: string,
     userId: string
 ): Promise<CategoryResponseDTO[]> {
+    // Import permission check from paineisServico
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     const where: Prisma.CategoryWhereInput = {
         deletedAt: null,
         isActive: dto.isActive !== undefined ? dto.isActive : true,
         ...(dto.type && { type: dto.type }),
         OR: [
-            { userId },
-            ...(dto.includeSystem ? [{ isSystem: true }] : []),
+            { dashboardId },
+            ...(dto.includeSystem ? [{ isSystem: true, dashboardId: null }] : []),
         ],
     };
 
@@ -106,12 +115,16 @@ export async function getCategories(
 
 export async function getCategoryById(
     id: string,
+    dashboardId: string,
     userId: string
 ): Promise<Category> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     const category = await prisma.category.findFirst({
         where: {
             id,
-            OR: [{ userId }, { isSystem: true }],
+            OR: [{ dashboardId }, { isSystem: true, dashboardId: null }],
             deletedAt: null,
         },
     });
@@ -126,10 +139,14 @@ export async function getCategoryById(
 export async function updateCategory(
     id: string,
     dto: UpdateCategoryDTO,
+    dashboardId: string,
     userId: string
 ): Promise<Category> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
     const category = await prisma.category.findFirst({
-        where: { id, userId, deletedAt: null },
+        where: { id, dashboardId, deletedAt: null },
     });
 
     if (!category) {
@@ -141,7 +158,7 @@ export async function updateCategory(
         const parent = await prisma.category.findFirst({
             where: {
                 id: dto.parentId,
-                OR: [{ userId }, { isSystem: true }],
+                OR: [{ dashboardId }, { isSystem: true, dashboardId: null }],
                 deletedAt: null,
             },
         });
@@ -150,7 +167,7 @@ export async function updateCategory(
             throw new NotFoundError('Nova categoria pai não encontrada');
         }
 
-        // Evitar ciclo (não pode ser filho de si mesmo ou de seus descendentes)
+        // Evitar ciclo
         if (dto.parentId === id) {
             throw new ValidationError('Categoria não pode ser pai de si mesma');
         }
@@ -161,16 +178,20 @@ export async function updateCategory(
         data: dto,
     });
 
-    logger.info('Categoria atualizada', 'CategoryService', { id, userId });
+    logger.info('Categoria atualizada', 'CategoryService', { id, dashboardId });
     return updated;
 }
 
 export async function deleteCategory(
     id: string,
+    dashboardId: string,
     userId: string
 ): Promise<void> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
     const category = await prisma.category.findFirst({
-        where: { id, userId, deletedAt: null },
+        where: { id, dashboardId, deletedAt: null },
         include: { children: true },
     });
 
@@ -178,8 +199,7 @@ export async function deleteCategory(
         throw new NotFoundError('Categoria não encontrada ou é do sistema');
     }
 
-    // Soft delete (cascata para filhos se necessário, ou impedir)
-    // Aqui vamos impedir se tiver filhos ativos
+    // Impedir se tiver filhos ativos
     const activeChildren = await prisma.category.count({
         where: { parentId: id, deletedAt: null },
     });
@@ -188,13 +208,12 @@ export async function deleteCategory(
         throw new ValidationError('Não é possível deletar categoria com subcategorias ativas');
     }
 
-    // Verificar uso em transações (opcional, mas recomendado)
+    // Verificar uso em transações
     const usageCount = await prisma.transaction.count({
-        where: { category: category.name, userId, deletedAt: null },
+        where: { category: category.name, dashboardId, deletedAt: null },
     });
 
     if (usageCount > 0) {
-        // Se usada, apenas desativa
         await prisma.category.update({
             where: { id },
             data: { isActive: false },

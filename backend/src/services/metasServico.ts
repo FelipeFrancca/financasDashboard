@@ -19,28 +19,36 @@ import { NotFoundError, ValidationError } from '../utils/AppError';
 
 export async function createGoal(
     dto: CreateGoalDTO,
+    dashboardId: string,
     userId: string
 ): Promise<FinancialGoal> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
     const goal = await prisma.financialGoal.create({
         data: {
             ...dto,
-            userId,
+            dashboardId,
             status: 'ACTIVE',
             isCompleted: dto.currentAmount >= dto.targetAmount,
             completedAt: dto.currentAmount >= dto.targetAmount ? new Date() : null,
         },
     });
 
-    logger.info('Meta criada', 'GoalService', { id: goal.id, userId });
+    logger.info('Meta criada', 'GoalService', { id: goal.id, dashboardId });
     return goal;
 }
 
 export async function getGoals(
     dto: QueryGoalsDTO,
+    dashboardId: string,
     userId: string
 ): Promise<{ data: GoalResponseDTO[]; total: number }> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     const where: Prisma.FinancialGoalWhereInput = {
-        userId,
+        dashboardId,
         deletedAt: null,
         ...(dto.status && { status: dto.status }),
         ...(dto.isCompleted !== undefined && { isCompleted: dto.isCompleted }),
@@ -64,10 +72,14 @@ export async function getGoals(
 
 export async function getGoalById(
     id: string,
+    dashboardId: string,
     userId: string
 ): Promise<GoalResponseDTO> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     const goal = await prisma.financialGoal.findFirst({
-        where: { id, userId, deletedAt: null },
+        where: { id, dashboardId, deletedAt: null },
     });
 
     if (!goal) {
@@ -80,10 +92,14 @@ export async function getGoalById(
 export async function updateGoal(
     id: string,
     dto: UpdateGoalDTO,
+    dashboardId: string,
     userId: string
 ): Promise<FinancialGoal> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
     const goal = await prisma.financialGoal.findFirst({
-        where: { id, userId, deletedAt: null },
+        where: { id, dashboardId, deletedAt: null },
     });
 
     if (!goal) {
@@ -118,16 +134,20 @@ export async function updateGoal(
         },
     });
 
-    logger.info('Meta atualizada', 'GoalService', { id, userId });
+    logger.info('Meta atualizada', 'GoalService', { id, dashboardId });
     return updated;
 }
 
 export async function deleteGoal(
     id: string,
+    dashboardId: string,
     userId: string
 ): Promise<void> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
     const goal = await prisma.financialGoal.findFirst({
-        where: { id, userId, deletedAt: null },
+        where: { id, dashboardId, deletedAt: null },
     });
 
     if (!goal) {
