@@ -128,7 +128,7 @@ export function useResponsiveColumns(
     desktop: number = 3,
     wide: number = 4
 ) {
-    const { isMobile, isTablet, isDesktop, upXl } = useResponsive();
+    const { isTablet, isDesktop, upXl } = useResponsive();
 
     if (upXl) return wide;
     if (isDesktop) return desktop;

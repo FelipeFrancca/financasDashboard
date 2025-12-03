@@ -62,5 +62,6 @@ router.post("/forgot-password", authLimiter, validateBody(forgotPasswordSchema),
 router.post("/reset-password", strictLimiter, validateBody(resetPasswordSchema), asyncHandler(authController.redefinirSenha as any));
 router.post("/refresh", validateBody(refreshTokenSchema), asyncHandler(authController.atualizarToken as any));
 router.get("/me", authenticateToken, asyncHandler(authController.obterUsuarioAtual as any));
+router.post("/resend-welcome", authenticateToken, asyncHandler(authController.reenviarBoasVindas as any));
 
 export default router;

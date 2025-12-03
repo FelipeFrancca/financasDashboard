@@ -11,4 +11,8 @@ router.put('/:id/read', authenticateToken, asyncHandler(alertasController.marcar
 router.put('/read-all', authenticateToken, asyncHandler(alertasController.marcarTodosComoLidos as any as any));
 router.delete('/:id', authenticateToken, validateParams(idParamSchema), asyncHandler(alertasController.deletarAlerta as any));
 
+// Rotas de teste de email
+router.post('/test-email', authenticateToken, asyncHandler(alertasController.testarEmail as any));
+router.get('/verify-email', authenticateToken, asyncHandler(alertasController.verificarConexaoEmail as any));
+
 export default router;

@@ -1,4 +1,3 @@
-import { ReactNode } from 'react';
 import { Box, Skeleton, Stack, Card, CardContent } from '@mui/material';
 
 interface LoadingSkeletonProps {

@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import * as authService from '../services/autenticacaoServico';
 import { logger } from '../utils/logger';
 import { AuthRequest } from '../middleware/auth';
+import emailServico from '../services/emailServico';
+import { prisma } from '../database/conexao';
 
 export const registrar = async (req: Request, res: Response) => {
     logger.info("Novo registro de usuário", "AuthRoute", { email: req.body.email });
@@ -69,4 +71,41 @@ export const obterUsuarioAtual = async (req: AuthRequest, res: Response) => {
         success: true,
         data: { user },
     });
+};
+
+export const reenviarBoasVindas = async (req: AuthRequest, res: Response) => {
+    try {
+        const userId = req.user!.userId;
+        
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { email: true, name: true },
+        });
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                error: 'Usuário não encontrado',
+            });
+        }
+
+        await emailServico.enviarBoasVindas({
+            email: user.email,
+            nome: user.name || 'Usuário',
+        });
+
+        logger.info('Email de boas-vindas reenviado', 'AuthRoute', { email: user.email });
+
+        res.json({
+            success: true,
+            message: `Email de boas-vindas enviado para ${user.email}`,
+        });
+    } catch (error: any) {
+        logger.error('Erro ao reenviar email de boas-vindas', 'AuthRoute', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erro ao enviar email',
+            details: error.message,
+        });
+    }
 };

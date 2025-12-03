@@ -3,7 +3,6 @@ import {
   IconButton,
   Badge,
   Menu,
-  MenuItem,
   List,
   ListItem,
   ListItemText,
@@ -21,7 +20,7 @@ import InfoIcon from '@mui/icons-material/Info';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
 import { useNavigate, useParams } from 'react-router-dom';
-import { useNotifications, useMarkAsRead, useMarkAllAsRead } from '../../hooks/api/useNotifications';
+import { useNotifications, useMarkAsRead, useMarkAllAsRead } from '../hooks/api/useNotifications';
 
 const typeIcons = {
   INFO: <InfoIcon color="info" />,

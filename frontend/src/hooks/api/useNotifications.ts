@@ -14,7 +14,7 @@ export interface Notification {
 }
 
 // Get all notifications for a dashboard
-export const useNotifications = (dashboardId: string | undefined, unreadOnly = false) => {
+export function useNotifications(dashboardId: string | undefined, unreadOnly = false) {
     return useQuery({
         queryKey: ['notifications', dashboardId, unreadOnly],
         queryFn: async () => {
@@ -26,10 +26,10 @@ export const useNotifications = (dashboardId: string | undefined, unreadOnly = f
         },
         enabled: !!dashboardId,
     });
-};
+}
 
 // Mark notification as read
-export const useMarkAsRead = () => {
+export function useMarkAsRead() {
     const queryClient = useQueryClient();
 
     return useMutation({
@@ -41,10 +41,10 @@ export const useMarkAsRead = () => {
             queryClient.invalidateQueries({ queryKey: ['notifications'] });
         },
     });
-};
+}
 
 // Mark all notifications as read
-export const useMarkAllAsRead = () => {
+export function useMarkAllAsRead() {
     const queryClient = useQueryClient();
 
     return useMutation({
@@ -56,10 +56,10 @@ export const useMarkAllAsRead = () => {
             queryClient.invalidateQueries({ queryKey: ['notifications'] });
         },
     });
-};
+}
 
 // Delete notification
-export const useDeleteNotification = () => {
+export function useDeleteNotification() {
     const queryClient = useQueryClient();
 
     return useMutation({
@@ -71,4 +71,5 @@ export const useDeleteNotification = () => {
             queryClient.invalidateQueries({ queryKey: ['notifications'] });
         },
     });
-};
+}
+

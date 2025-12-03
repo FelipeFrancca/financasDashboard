@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import emailServico from './emailServico';
 
 // Define User type locally to avoid import issues
 type User = {
@@ -105,6 +106,17 @@ export async function registerUser(data: RegisterInput): Promise<{ user: Omit<Us
     },
   });
 
+  // Enviar email de boas-vindas
+  try {
+    await emailServico.enviarBoasVindas({
+      email: user.email,
+      nome: user.name || 'Usuário',
+    });
+  } catch (error) {
+    console.error('Erro ao enviar email de boas-vindas:', error);
+    // Não falhar o registro se o email falhar
+  }
+
   // Generate tokens
   const accessToken = generateAccessToken(user.id, user.email);
   const refreshToken = generateRefreshToken(user.id, user.email);
@@ -188,6 +200,17 @@ export async function googleAuth(data: GoogleUserData): Promise<{ user: Omit<Use
         },
       });
       isNewUser = true;
+
+      // Enviar email de boas-vindas
+      try {
+        await emailServico.enviarBoasVindas({
+          email: user.email,
+          nome: user.name || 'Usuário',
+        });
+      } catch (error) {
+        console.error('Erro ao enviar email de boas-vindas:', error);
+        // Não falhar o registro se o email falhar
+      }
     }
   }
 

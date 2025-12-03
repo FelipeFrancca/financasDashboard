@@ -8,7 +8,6 @@ import {
   Typography,
   TextField,
   Button,
-  Avatar,
   Switch,
   FormControlLabel,
   FormGroup,

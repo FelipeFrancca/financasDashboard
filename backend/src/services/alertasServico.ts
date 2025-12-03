@@ -1,6 +1,8 @@
 import { Alert, AlertType, AlertSeverity, Prisma } from '@prisma/client';
 import { prisma } from '../database/conexao';
 import { logger } from '../utils/logger';
+import emailServico from './emailServico';
+import { getNotificationPreferences } from './notificationPreferencesServico';
 
 export async function createAlert(
     dashboardId: string,
@@ -18,12 +20,64 @@ export async function createAlert(
     const { checkPermission } = await import('./paineisServico');
     await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
-    return prisma.alert.create({
+    const alert = await prisma.alert.create({
         data: {
             ...data,
             dashboardId,
         },
     });
+
+    // Enviar notificação por email se habilitado
+    await sendEmailNotification(alert, userId);
+
+    return alert;
+}
+
+async function sendEmailNotification(alert: Alert, userId: string) {
+    try {
+        const preferences = await getNotificationPreferences(userId);
+        
+        // Verificar se notificações por email estão habilitadas
+        if (!preferences.emailEnabled) {
+            return;
+        }
+
+        // Obter dados do usuário
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { email: true, name: true },
+        });
+
+        if (!user?.email) {
+            return;
+        }
+
+        // Verificar tipo de alerta e preferências específicas
+        if (alert.type === 'BUDGET_ALERT' && preferences.emailBudgetAlerts) {
+            const metadata = alert.metadata as any;
+            await emailServico.enviarAlertaOrcamento({
+                email: user.email,
+                nome: user.name,
+                categoria: metadata?.categoria || 'Categoria',
+                limite: metadata?.limite || 0,
+                gasto: metadata?.gasto || 0,
+                percentual: metadata?.percentual || 0,
+            });
+        } else if (alert.type === 'GOAL_MILESTONE' && preferences.emailGoalMilestones) {
+            const metadata = alert.metadata as any;
+            await emailServico.enviarAlertaMeta({
+                email: user.email,
+                nome: user.name,
+                meta: metadata?.meta || 'Meta',
+                valorAlvo: metadata?.valorAlvo || 0,
+                valorAtual: metadata?.valorAtual || 0,
+                percentual: metadata?.percentual || 0,
+            });
+        }
+    } catch (error) {
+        logger.error('Erro ao enviar notificação por email:', error);
+        // Não propagar o erro para não afetar a criação do alerta
+    }
 }
 
 export async function getAlerts(dashboardId: string, userId: string, unreadOnly = false) {
