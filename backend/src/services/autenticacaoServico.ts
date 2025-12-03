@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import nodemailer from "nodemailer";
 import emailServico from './emailServico';
+import { AppError } from '../utils/AppError';
 
 // Define User type locally to avoid import issues
 type User = {
@@ -139,14 +140,14 @@ export async function loginUser(data: LoginInput): Promise<{ user: Omit<User, "p
   });
 
   if (!user || !user.password) {
-    throw new Error("Credenciais inválidas");
+    throw new AppError("Email não encontrado", 401, true, "EMAIL_NOT_FOUND");
   }
 
   // Verify password
   const isPasswordValid = await bcrypt.compare(data.password, user.password);
 
   if (!isPasswordValid) {
-    throw new Error("Credenciais inválidas");
+    throw new AppError("Senha incorreta", 401, true, "INVALID_PASSWORD");
   }
 
   // Generate tokens
@@ -240,9 +241,17 @@ export async function requestPasswordReset(email: string): Promise<void> {
     return;
   }
 
-  // Generate reset token
-  const resetToken = crypto.randomBytes(32).toString("hex");
-  const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
+  // Check if there is already a valid token
+  if (user.resetToken && user.resetTokenExpiry && user.resetTokenExpiry > new Date()) {
+    // Token is still valid, do not send a new one (throttling)
+    // We return silently to avoid revealing information, or we could throw an error if we want to inform the user
+    // User requirement: "nao devemos enviar um novo enquanto esse ainda estiver valido"
+    return;
+  }
+
+  // Generate 4-digit code
+  const resetToken = Math.floor(1000 + Math.random() * 9000).toString();
+  const resetTokenExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
   // Save token to database
   await (prisma as any).user.update({
@@ -253,21 +262,22 @@ export async function requestPasswordReset(email: string): Promise<void> {
     },
   });
 
-  // Send email
-  const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-
   try {
     await emailTransporter.sendMail({
       from: process.env.EMAIL_FROM,
       to: email,
-      subject: "Redefinição de Senha - Finanças Dashboard",
+      subject: "Código de Redefinição de Senha - Finanças Dashboard",
       html: `
-        <h1>Redefinição de Senha</h1>
-        <p>Você solicitou a redefinição de senha para sua conta no Finanças Dashboard.</p>
-        <p>Clique no link abaixo para redefinir sua senha:</p>
-        <a href="${resetUrl}" style="display: inline-block; padding: 10px 20px; background-color: #1976d2; color: white; text-decoration: none; border-radius: 4px;">Redefinir Senha</a>
-        <p>Este link expira em 1 hora.</p>
-        <p>Se você não solicitou esta redefinição, ignore este email.</p>
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h1 style="color: #333;">Redefinição de Senha</h1>
+          <p>Você solicitou a redefinição de senha para sua conta no Finanças Dashboard.</p>
+          <p>Seu código de verificação é:</p>
+          <div style="background-color: #f4f4f4; padding: 15px; text-align: center; border-radius: 8px; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #1976d2;">${resetToken}</span>
+          </div>
+          <p>Este código é válido por 5 minutos.</p>
+          <p>Se você não solicitou esta redefinição, ignore este email.</p>
+        </div>
       `,
     });
   } catch (error) {
@@ -276,17 +286,18 @@ export async function requestPasswordReset(email: string): Promise<void> {
   }
 }
 
-// Reset password with token
-export async function resetPassword(token: string, newPassword: string): Promise<void> {
-  const user = await (prisma as any).user.findFirst({
-    where: {
-      resetToken: token,
-      resetTokenExpiry: { gte: new Date() },
-    },
+// Reset password with code
+export async function resetPassword(email: string, code: string, newPassword: string): Promise<void> {
+  const user = await (prisma as any).user.findUnique({
+    where: { email },
   });
 
   if (!user) {
-    throw new Error("Token inválido ou expirado");
+    throw new Error("Email inválido");
+  }
+
+  if (user.resetToken !== code || !user.resetTokenExpiry || user.resetTokenExpiry < new Date()) {
+    throw new Error("Código inválido ou expirado");
   }
 
   // Hash new password

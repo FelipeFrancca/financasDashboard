@@ -10,6 +10,50 @@ import { AppError, ValidationError, DatabaseError, InternalServerError } from '.
 import { logger } from '../utils/logger';
 
 /**
+ * Sanitiza dados sensíveis antes de logar
+ * Remove campos como senha, tokens, etc.
+ */
+function sanitizeLogData(data: any): any {
+    if (!data || typeof data !== 'object') {
+        return data;
+    }
+
+    const sensitiveFields = [
+        'password',
+        'confirmPassword',
+        'newPassword',
+        'oldPassword',
+        'currentPassword',
+        'token',
+        'accessToken',
+        'refreshToken',
+        'resetToken',
+        'verificationToken',
+        'secret',
+        'apiKey',
+        'authorization',
+    ];
+
+    const sanitized = Array.isArray(data) ? [...data] : { ...data };
+
+    for (const key in sanitized) {
+        if (Object.prototype.hasOwnProperty.call(sanitized, key)) {
+            const lowerKey = key.toLowerCase();
+
+            // Check if field name contains sensitive keywords
+            if (sensitiveFields.some(field => lowerKey.includes(field))) {
+                sanitized[key] = '[REDACTED]';
+            } else if (typeof sanitized[key] === 'object' && sanitized[key] !== null) {
+                // Recursively sanitize nested objects
+                sanitized[key] = sanitizeLogData(sanitized[key]);
+            }
+        }
+    }
+
+    return sanitized;
+}
+
+/**
  * Trata erros do Zod (validação)
  */
 function handleZodError(error: ZodError): ValidationError {
@@ -88,12 +132,12 @@ export function errorHandler(
         );
     }
 
-    // Log do erro
+    // Log do erro (sanitiza dados sensíveis)
     const logContext = `${req.method} ${req.path}`;
     const logData = {
-        body: req.body,
-        query: req.query,
-        params: req.params,
+        body: sanitizeLogData(req.body),
+        query: sanitizeLogData(req.query),
+        params: sanitizeLogData(req.params),
         user: (req as any).user?.userId,
     };
 

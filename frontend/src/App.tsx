@@ -9,7 +9,6 @@ import PrivateRoute from './components/PrivateRoute';
 // Lazy imports
 const HomePage = lazy(() => import('./pages/HomePage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
-const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const GoogleCallbackPage = lazy(() => import('./pages/GoogleCallbackPage'));
 const SharedPreviewPage = lazy(() => import('./pages/SharedPreviewPage'));
@@ -68,7 +67,6 @@ function App() {
               {/* Public routes */}
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
-              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/auth/callback" element={<GoogleCallbackPage />} />
               <Route path="/shared/:code" element={<SharedPreviewPage />} />
@@ -85,7 +83,7 @@ function App() {
                 <Route path="/dashboards" element={<HomePage />} />
                 <Route path="/dashboards/new" element={<CreateDashboardPage />} />
                 <Route path="/dashboards/join" element={<JoinDashboardPage />} />
-                
+
                 {/* Individual dashboard routes */}
                 <Route path="/dashboard/:dashboardId" element={<DashboardFinancial />} />
                 <Route path="/dashboard/:dashboardId/accounts" element={<AccountsPage />} />
@@ -98,7 +96,7 @@ function App() {
                 <Route path="/dashboard/:dashboardId/members" element={<div>Members Page</div>} />
                 <Route path="/dashboard/:dashboardId/settings" element={<div>Dashboard Settings Page</div>} />
                 <Route path="/dashboard/:dashboardId/transactions" element={<div>Transactions Page</div>} />
-                
+
                 {/* User profile and notifications */}
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/notifications" element={<NotificationsPage />} />

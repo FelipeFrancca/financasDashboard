@@ -1,6 +1,9 @@
 /**
  * Middleware de Logging de Requisições HTTP
  * Registra todas as requisições com detalhes úteis
+ * 
+ * SECURITY WARNING: Never log req.body as it may contain sensitive data
+ * like passwords, tokens, etc. Only log metadata about the request.
  */
 
 import type { Request, Response, NextFunction } from 'express';

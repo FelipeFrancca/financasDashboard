@@ -76,9 +76,10 @@ export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
  * Schema de reset de senha
  */
 export const resetPasswordSchema = z.object({
-    token: z.string({
-        required_error: 'Token é obrigatório',
-    }).min(1, 'Token não pode estar vazio'),
+    email: emailSchema,
+    code: z.string({
+        required_error: 'Código é obrigatório',
+    }).length(4, 'Código deve ter 4 dígitos'),
     password: passwordSchema,
 });
 

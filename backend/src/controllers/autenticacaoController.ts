@@ -47,7 +47,7 @@ export const esqueciSenha = async (req: Request, res: Response) => {
 
 export const redefinirSenha = async (req: Request, res: Response) => {
     logger.info("Reset de senha", "AuthRoute");
-    await authService.resetPassword(req.body.token, req.body.password);
+    await authService.resetPassword(req.body.email, req.body.code, req.body.password);
     res.json({
         success: true,
         message: "Senha redefinida com sucesso",
@@ -76,7 +76,7 @@ export const obterUsuarioAtual = async (req: AuthRequest, res: Response) => {
 export const reenviarBoasVindas = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user!.userId;
-        
+
         const user = await prisma.user.findUnique({
             where: { id: userId },
             select: { email: true, name: true },
