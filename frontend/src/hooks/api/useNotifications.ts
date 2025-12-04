@@ -21,7 +21,7 @@ export function useNotifications(dashboardId: string | undefined, unreadOnly = f
             if (!dashboardId) return [];
             const params = new URLSearchParams({ dashboardId });
             if (unreadOnly) params.append('unreadOnly', 'true');
-            const response = await api.get(`/api/alerts?${params.toString()}`);
+            const response = await api.get(`/alerts?${params.toString()}`);
             return response.data.data as Notification[];
         },
         enabled: !!dashboardId,
@@ -34,7 +34,7 @@ export function useMarkAsRead() {
 
     return useMutation({
         mutationFn: async ({ id, dashboardId }: { id: string; dashboardId: string }) => {
-            const response = await api.put(`/api/alerts/${id}/read`, { dashboardId });
+            const response = await api.put(`/alerts/${id}/read`, { dashboardId });
             return response.data;
         },
         onSuccess: () => {
@@ -49,7 +49,7 @@ export function useMarkAllAsRead() {
 
     return useMutation({
         mutationFn: async (dashboardId: string) => {
-            const response = await api.put('/api/alerts/read-all', { dashboardId });
+            const response = await api.put('/alerts/read-all', { dashboardId });
             return response.data;
         },
         onSuccess: () => {
@@ -64,7 +64,7 @@ export function useDeleteNotification() {
 
     return useMutation({
         mutationFn: async ({ id, dashboardId }: { id: string; dashboardId: string }) => {
-            const response = await api.delete(`/api/alerts/${id}?dashboardId=${dashboardId}`);
+            const response = await api.delete(`/alerts/${id}?dashboardId=${dashboardId}`);
             return response.data;
         },
         onSuccess: () => {

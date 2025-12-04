@@ -18,6 +18,7 @@ import metasRotas from "./routes/metasRotas";
 import alertasRotas from "./routes/alertasRotas";
 import recorrenciaRotas from "./routes/recorrenciaRotas";
 import notificationPreferencesRotas from "./routes/notificationPreferencesRotas";
+import ingestionRotas from "./routes/ingestionRotas";
 
 // Middlewares e Utils
 import { logger } from "./utils/logger";
@@ -125,6 +126,7 @@ app.use("/api/goals", metasRotas);
 app.use("/api/alerts", alertasRotas);
 app.use("/api/recurrences", recorrenciaRotas);
 app.use("/api/notification-preferences", notificationPreferencesRotas);
+app.use("/api/ingestion", ingestionRotas);
 
 // Health check
 app.get("/health", async (_req, res) => {

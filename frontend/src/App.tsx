@@ -26,6 +26,7 @@ const JoinDashboardPage = lazy(() => import('./pages/JoinDashboardPage'));
 const CreateDashboardPage = lazy(() => import('./pages/CreateDashboardPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
+const IngestionPage = lazy(() => import('./pages/IngestionPage'));
 
 const PageLoader = () => (
   <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -95,6 +96,7 @@ function App() {
                 <Route path="/dashboard/:dashboardId/alerts" element={<AlertsPage />} />
                 <Route path="/dashboard/:dashboardId/members" element={<div>Members Page</div>} />
                 <Route path="/dashboard/:dashboardId/settings" element={<div>Dashboard Settings Page</div>} />
+                <Route path="/dashboard/:dashboardId/ingestion" element={<IngestionPage />} />
                 <Route path="/dashboard/:dashboardId/transactions" element={<div>Transactions Page</div>} />
 
                 {/* User profile and notifications */}

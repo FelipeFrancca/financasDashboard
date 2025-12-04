@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useParams } from 'react-router-dom';
 import {
     Box,
     Container,
@@ -59,12 +60,18 @@ const defaultValues: AccountFormData = {
     color: '#000000',
 };
 
+
+
+// ... imports
+
 export default function AccountsPage() {
+    const { dashboardId } = useParams<{ dashboardId: string }>();
     const [open, setOpen] = useState(false);
     const [editingAccount, setEditingAccount] = useState<any>(null);
 
     // Hooks
-    const { data: accounts = [] } = useAccounts();
+    // Hooks
+    const { data: accounts = [] } = useAccounts(dashboardId || '');
     const createAccount = useCreateAccount();
     const updateAccount = useUpdateAccount();
     const deleteAccount = useDeleteAccount();
@@ -98,9 +105,9 @@ export default function AccountsPage() {
             };
 
             if (editingAccount) {
-                await updateAccount.mutateAsync({ id: editingAccount.id, data: dataToSend });
+                await updateAccount.mutateAsync({ id: editingAccount.id, data: dataToSend, dashboardId: dashboardId || '' });
             } else {
-                await createAccount.mutateAsync(dataToSend);
+                await createAccount.mutateAsync({ data: dataToSend, dashboardId: dashboardId || '' });
             }
             setOpen(false);
             showSuccess(`Conta ${editingAccount ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
@@ -122,7 +129,7 @@ export default function AccountsPage() {
 
         if (result.isConfirmed) {
             try {
-                await deleteAccount.mutateAsync(id);
+                await deleteAccount.mutateAsync({ id, dashboardId: dashboardId || '' });
                 showSuccess('A conta foi excluída.', { title: 'Excluído!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível excluir a conta.' });

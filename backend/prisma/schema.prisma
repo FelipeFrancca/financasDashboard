@@ -31,7 +31,7 @@ model User {
   budgets               Budget[]
   categories            Category[]
   financialGoals        FinancialGoal[]
-  alerts                Alert[]
+  alerts                Alert[]           @relation("UserAlerts")
   recurringTransactions RecurringTransaction[]
   dashboardsOwned       Dashboard[]
   dashboardMemberships  DashboardMember[]
@@ -84,6 +84,9 @@ model Transaction {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  dashboardId String
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
   // Soft delete
   deletedAt DateTime?
   deletedBy String?
@@ -96,6 +99,7 @@ model Transaction {
   @@index([category])
   @@index([institution])
   @@index([userId])
+  @@index([dashboardId])
   @@index([accountId])
   @@index([userId, date])
   @@index([userId, category, date])
@@ -118,6 +122,8 @@ model Dashboard {
   owner       User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   members     DashboardMember[]
   invites     DashboardInvite[]
+  transactions Transaction[]
+  alerts      Alert[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -364,20 +370,33 @@ enum AlertType {
   UNUSUAL_SPENDING // Gasto incomum
   RECURRING_DUE // Transação recorrente pendente
   CUSTOM // Alerta customizado
+  BUDGET_ALERT
+  GOAL_MILESTONE
+  LARGE_TRANSACTION
+  DASHBOARD_INVITE
+  SYSTEM_UPDATE
+  PAYMENT_DUE
+  RECURRING_TRANSACTION
 }
 
 enum AlertSeverity {
   INFO
   WARNING
   CRITICAL
+  ERROR
+  SUCCESS
 }
 
 model Alert {
-  id       String        @id @default(cuid())
-  type     AlertType
-  severity AlertSeverity @default(INFO)
-  title    String
-  message  String
+  id          String        @id @default(cuid())
+  type        AlertType
+  severity    AlertSeverity @default(INFO)
+  title       String
+  message     String        @db.Text
+
+  // Dashboard relationship
+  dashboardId String
+  dashboard   Dashboard     @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
 
   // Dados relacionados
   relatedType String? // "Budget", "Account", "Goal", etc
@@ -385,7 +404,7 @@ model Alert {
   metadata    Json? // Dados adicionais
 
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user   User   @relation("UserAlerts", fields: [userId], references: [id], onDelete: Cascade)
 
   // Controle
   isRead Boolean   @default(false)
@@ -393,10 +412,13 @@ model Alert {
 
   createdAt DateTime @default(now())
 
+  @@index([dashboardId])
+  @@index([userId])
   @@index([userId, isRead])
   @@index([userId, createdAt])
   @@index([type])
   @@index([severity])
+  @@index([isRead])
   @@map("alerts")
 }
 
@@ -525,3 +547,4 @@ model NotificationPreferences {
 
   @@map("notification_preferences")
 }
+

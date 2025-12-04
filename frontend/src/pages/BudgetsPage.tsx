@@ -47,13 +47,18 @@ const defaultValues: BudgetFormData = {
     period: 'MONTHLY',
 };
 
+import { useParams } from 'react-router-dom';
+
+// ... imports
+
 export default function BudgetsPage() {
+    const { dashboardId } = useParams<{ dashboardId: string }>();
     const [open, setOpen] = useState(false);
     const [editingBudget, setEditingBudget] = useState<any>(null);
 
     // Hooks
-    const { data: budgets = [] } = useBudgets();
-    const { data: categories = [] } = useCategories();
+    const { data: budgets = [] } = useBudgets(dashboardId || '');
+    const { data: categories = [] } = useCategories(dashboardId || '');
     const createBudget = useCreateBudget();
     const updateBudget = useUpdateBudget();
     const deleteBudget = useDeleteBudget();
@@ -97,9 +102,9 @@ export default function BudgetsPage() {
             };
 
             if (editingBudget) {
-                await updateBudget.mutateAsync({ id: editingBudget.id, data: payload });
+                await updateBudget.mutateAsync({ id: editingBudget.id, data: payload, dashboardId: dashboardId || '' });
             } else {
-                await createBudget.mutateAsync(payload);
+                await createBudget.mutateAsync({ data: payload, dashboardId: dashboardId || '' });
             }
             setOpen(false);
             showSuccess(`Orçamento ${editingBudget ? 'atualizado' : 'criado'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
@@ -122,7 +127,7 @@ export default function BudgetsPage() {
 
         if (result.isConfirmed) {
             try {
-                await deleteBudget.mutateAsync(id);
+                await deleteBudget.mutateAsync({ id, dashboardId: dashboardId || '' });
                 showSuccess('O orçamento foi excluído.', { title: 'Excluído!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível excluir o orçamento.' });

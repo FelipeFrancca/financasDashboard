@@ -46,12 +46,17 @@ const defaultValues: TransferFormData = {
     description: '',
 };
 
+import { useParams } from 'react-router-dom';
+
+// ... imports
+
 export default function TransfersPage() {
+    const { dashboardId } = useParams<{ dashboardId: string }>();
     const [open, setOpen] = useState(false);
 
     // Hooks
-    const { data: transfers = [] } = useTransfers();
-    const { data: accounts = [] } = useAccounts();
+    const { data: transfers = [] } = useTransfers(dashboardId || '');
+    const { data: accounts = [] } = useAccounts(dashboardId || '');
     const createTransfer = useCreateTransfer();
     const deleteTransfer = useDeleteTransfer();
 
@@ -75,7 +80,7 @@ export default function TransfersPage() {
                 ...data,
                 date: new Date(data.date).toISOString(),
             };
-            await createTransfer.mutateAsync(payload);
+            await createTransfer.mutateAsync({ data: payload, dashboardId: dashboardId || '' });
             setOpen(false);
             showSuccess('Transferência realizada com sucesso!', { title: 'Sucesso', timer: 1500 });
         } catch (error) {
@@ -97,7 +102,7 @@ export default function TransfersPage() {
 
         if (result.isConfirmed) {
             try {
-                await deleteTransfer.mutateAsync(id);
+                await deleteTransfer.mutateAsync({ id, dashboardId: dashboardId || '' });
                 showSuccess('A transferência foi revertida.', { title: 'Revertido!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível reverter a transferência.' });

@@ -33,7 +33,7 @@ export const useNotificationPreferences = () => {
     return useQuery({
         queryKey: ['notificationPreferences'],
         queryFn: async () => {
-            const response = await api.get('/api/notification-preferences');
+            const response = await api.get('/notification-preferences');
             return response.data.data as NotificationPreferences;
         },
     });
@@ -45,7 +45,7 @@ export const useUpdateNotificationPreferences = () => {
 
     return useMutation({
         mutationFn: async (data: Partial<NotificationPreferences>) => {
-            const response = await api.put('/api/notification-preferences', data);
+            const response = await api.put('/notification-preferences', data);
             return response.data.data;
         },
         onSuccess: () => {

@@ -1,5 +1,6 @@
 export interface Transaction {
   id: string;
+  dashboardId: string;
   date: string | Date;
   entryType: 'Receita' | 'Despesa';
   flowType: 'Fixa' | 'Variável';

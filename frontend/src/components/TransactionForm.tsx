@@ -69,8 +69,13 @@ const defaultValues: TransactionFormData = {
   thirdPartyDescription: '',
 };
 
+import { useParams } from 'react-router-dom';
+
+// ... imports
+
 export default function TransactionForm({ open, transaction, onClose, onSave }: TransactionFormProps) {
-  const { data: categories = [] } = useCategories();
+  const { dashboardId } = useParams<{ dashboardId: string }>();
+  const { data: categories = [] } = useCategories(dashboardId || '');
 
   const { control, handleSubmit, reset, watch, setValue } = useForm<TransactionFormData>({
     defaultValues

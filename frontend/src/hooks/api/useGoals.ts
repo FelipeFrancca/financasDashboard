@@ -1,17 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { goalService } from '../../services/api';
 
-export function useGoals() {
+export function useGoals(dashboardId: string) {
     return useQuery({
-        queryKey: ['goals'],
-        queryFn: goalService.getAll,
+        queryKey: ['goals', dashboardId],
+        queryFn: () => goalService.getAll(dashboardId),
+        enabled: !!dashboardId,
     });
 }
 
 export function useCreateGoal() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: goalService.create,
+        mutationFn: ({ data, dashboardId }: { data: any; dashboardId: string }) =>
+            goalService.create(data, dashboardId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['goals'] });
         },
@@ -21,7 +23,8 @@ export function useCreateGoal() {
 export function useUpdateGoal() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: ({ id, data }: { id: string; data: any }) => goalService.update(id, data),
+        mutationFn: ({ id, data, dashboardId }: { id: string; data: any; dashboardId: string }) =>
+            goalService.update(id, data, dashboardId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['goals'] });
         },
@@ -31,7 +34,8 @@ export function useUpdateGoal() {
 export function useDeleteGoal() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: goalService.delete,
+        mutationFn: ({ id, dashboardId }: { id: string; dashboardId: string }) =>
+            goalService.delete(id, dashboardId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['goals'] });
         },

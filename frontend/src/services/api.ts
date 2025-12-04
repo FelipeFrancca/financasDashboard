@@ -2,8 +2,8 @@ import axios from 'axios';
 import type { Transaction, TransactionFilters, StatsSummary } from '../types';
 
 // Use URL relativa quando VITE_API_URL não está definida (produção)
-const API_BASE_URL = import.meta.env.VITE_API_URL === undefined || import.meta.env.VITE_API_URL === '' 
-  ? '' 
+const API_BASE_URL = import.meta.env.VITE_API_URL === undefined || import.meta.env.VITE_API_URL === ''
+  ? ''
   : import.meta.env.VITE_API_URL;
 
 const api = axios.create({
@@ -183,124 +183,138 @@ export const dashboardService = {
 };
 
 export const categoryService = {
-  getAll: async () => {
-    const { data } = await api.get('/categories');
+  getAll: async (dashboardId: string) => {
+    const { data } = await api.get('/categories', { params: { dashboardId } });
     // Backend may return paginated response { data: { data: [...], total: number } } or direct array
     return data.data?.data || data.data || [];
   },
-  create: async (category: any) => {
-    const { data } = await api.post('/categories', category);
+  create: async (category: any, dashboardId: string) => {
+    const { data } = await api.post('/categories', { ...category, dashboardId });
     return data.data;
   },
-  update: async (id: string, category: any) => {
-    const { data } = await api.put(`/categories/${id}`, category);
+  update: async (id: string, category: any, dashboardId: string) => {
+    const { data } = await api.put(`/categories/${id}`, { ...category, dashboardId });
     return data.data;
   },
-  delete: async (id: string) => {
-    await api.delete(`/categories/${id}`);
+  delete: async (id: string, dashboardId: string) => {
+    await api.delete(`/categories/${id}?dashboardId=${dashboardId}`);
   }
 };
 
 export const accountService = {
-  getAll: async () => {
-    const { data } = await api.get('/accounts');
+  getAll: async (dashboardId: string) => {
+    const { data } = await api.get('/accounts', { params: { dashboardId } });
     // Backend returns { success: true, data: { data: [...], total: number } }
     return data.data?.data || data.data || [];
   },
-  create: async (account: any) => {
-    const { data } = await api.post('/accounts', account);
+  create: async (account: any, dashboardId: string) => {
+    const { data } = await api.post('/accounts', { ...account, dashboardId });
     return data.data;
   },
-  update: async (id: string, account: any) => {
-    const { data } = await api.put(`/accounts/${id}`, account);
+  update: async (id: string, account: any, dashboardId: string) => {
+    const { data } = await api.put(`/accounts/${id}`, { ...account, dashboardId });
     return data.data;
   },
-  delete: async (id: string) => {
-    await api.delete(`/accounts/${id}`);
+  delete: async (id: string, dashboardId: string) => {
+    await api.delete(`/accounts/${id}?dashboardId=${dashboardId}`);
   }
 };
 
 export const goalService = {
-  getAll: async () => {
-    const { data } = await api.get('/goals');
+  getAll: async (dashboardId: string) => {
+    const { data } = await api.get('/goals', { params: { dashboardId } });
     return data.data;
   },
-  create: async (goal: any) => {
-    const { data } = await api.post('/goals', goal);
+  create: async (goal: any, dashboardId: string) => {
+    const { data } = await api.post('/goals', { ...goal, dashboardId });
     return data.data;
   },
-  update: async (id: string, goal: any) => {
-    const { data } = await api.put(`/goals/${id}`, goal);
+  update: async (id: string, goal: any, dashboardId: string) => {
+    const { data } = await api.put(`/goals/${id}`, { ...goal, dashboardId });
     return data.data;
   },
-  delete: async (id: string) => {
-    await api.delete(`/goals/${id}`);
+  delete: async (id: string, dashboardId: string) => {
+    await api.delete(`/goals/${id}?dashboardId=${dashboardId}`);
   }
 };
 
 export const budgetService = {
-  getAll: async () => {
-    const { data } = await api.get('/budgets');
+  getAll: async (dashboardId: string) => {
+    const { data } = await api.get('/budgets', { params: { dashboardId } });
     // Backend returns { success: true, data: { data: Budget[], total: number } }
     return data.data?.data || data.data || [];
   },
-  create: async (budget: any) => {
-    const { data } = await api.post('/budgets', budget);
+  create: async (budget: any, dashboardId: string) => {
+    const { data } = await api.post('/budgets', { ...budget, dashboardId });
     return data.data;
   },
-  update: async (id: string, budget: any) => {
-    const { data } = await api.put(`/budgets/${id}`, budget);
+  update: async (id: string, budget: any, dashboardId: string) => {
+    const { data } = await api.put(`/budgets/${id}`, { ...budget, dashboardId });
     return data.data;
   },
-  delete: async (id: string) => {
-    await api.delete(`/budgets/${id}`);
+  delete: async (id: string, dashboardId: string) => {
+    await api.delete(`/budgets/${id}?dashboardId=${dashboardId}`);
   }
 };
 
 export const recurrenceService = {
-  getAll: async () => {
-    const { data } = await api.get('/recurrences');
+  getAll: async (dashboardId: string) => {
+    const { data } = await api.get('/recurrences', { params: { dashboardId } });
     return data.data;
   },
-  create: async (recurrence: any) => {
-    const { data } = await api.post('/recurrences', recurrence);
+  create: async (recurrence: any, dashboardId: string) => {
+    const { data } = await api.post('/recurrences', { ...recurrence, dashboardId });
     return data.data;
   },
-  update: async (id: string, recurrence: any) => {
-    const { data } = await api.put(`/recurrences/${id}`, recurrence);
+  update: async (id: string, recurrence: any, dashboardId: string) => {
+    const { data } = await api.put(`/recurrences/${id}`, { ...recurrence, dashboardId });
     return data.data;
   },
-  delete: async (id: string) => {
-    await api.delete(`/recurrences/${id}`);
+  delete: async (id: string, dashboardId: string) => {
+    await api.delete(`/recurrences/${id}?dashboardId=${dashboardId}`);
   }
 };
 
 export const transferService = {
-  getAll: async () => {
-    const { data } = await api.get('/transfers');
+  getAll: async (dashboardId: string) => {
+    const { data } = await api.get('/transfers', { params: { dashboardId } });
     return data.data?.data || data.data || [];
   },
-  create: async (transfer: any) => {
-    const { data } = await api.post('/transfers', transfer);
+  create: async (transfer: any, dashboardId: string) => {
+    const { data } = await api.post('/transfers', { ...transfer, dashboardId });
     return data.data;
   },
-  delete: async (id: string) => {
-    await api.delete(`/transfers/${id}`);
+  delete: async (id: string, dashboardId: string) => {
+    await api.delete(`/transfers/${id}?dashboardId=${dashboardId}`);
   }
 };
 
 export const alertService = {
-  getAll: async () => {
-    const { data } = await api.get('/alerts');
+  getAll: async (dashboardId: string) => {
+    const { data } = await api.get('/alerts', { params: { dashboardId } });
     return data.data;
   },
-  markAsRead: async (id: string) => {
-    const { data } = await api.put(`/alerts/${id}/read`);
+  markAsRead: async (id: string, dashboardId: string) => {
+    const { data } = await api.put(`/alerts/${id}/read`, { dashboardId });
     return data.data;
   },
-  delete: async (id: string) => {
-    await api.delete(`/alerts/${id}`);
+  delete: async (id: string, dashboardId: string) => {
+    await api.delete(`/alerts/${id}?dashboardId=${dashboardId}`);
   }
+};
+
+export const ingestionService = {
+  upload: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const { data } = await api.post('/ingestion/upload', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data.data;
+  },
 };
 
 export default api;

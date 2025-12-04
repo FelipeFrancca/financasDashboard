@@ -50,13 +50,18 @@ const defaultValues: RecurrenceFormData = {
     startDate: new Date().toISOString().split('T')[0],
 };
 
+import { useParams } from 'react-router-dom';
+
+// ... imports
+
 export default function RecurrencesPage() {
+    const { dashboardId } = useParams<{ dashboardId: string }>();
     const [open, setOpen] = useState(false);
     const [editingRecurrence, setEditingRecurrence] = useState<any>(null);
 
     // Hooks
-    const { data: recurrences = [] } = useRecurrences();
-    const { data: categories = [] } = useCategories();
+    const { data: recurrences = [] } = useRecurrences(dashboardId || '');
+    const { data: categories = [] } = useCategories(dashboardId || '');
     const createRecurrence = useCreateRecurrence();
     const updateRecurrence = useUpdateRecurrence();
     const deleteRecurrence = useDeleteRecurrence();
@@ -111,9 +116,9 @@ export default function RecurrencesPage() {
             };
 
             if (editingRecurrence) {
-                await updateRecurrence.mutateAsync({ id: editingRecurrence.id, data: payload });
+                await updateRecurrence.mutateAsync({ id: editingRecurrence.id, data: payload, dashboardId: dashboardId || '' });
             } else {
-                await createRecurrence.mutateAsync(payload);
+                await createRecurrence.mutateAsync({ data: payload, dashboardId: dashboardId || '' });
             }
             setOpen(false);
             showSuccess(`Recorrência ${editingRecurrence ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
@@ -136,7 +141,7 @@ export default function RecurrencesPage() {
 
         if (result.isConfirmed) {
             try {
-                await deleteRecurrence.mutateAsync(id);
+                await deleteRecurrence.mutateAsync({ id, dashboardId: dashboardId || '' });
                 showSuccess('A recorrência foi excluída.', { title: 'Excluído!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível excluir a recorrência.' });

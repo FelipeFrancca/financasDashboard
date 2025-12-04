@@ -1,17 +1,19 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { recurrenceService } from '../../services/api';
 
-export function useRecurrences() {
+export function useRecurrences(dashboardId: string) {
     return useQuery({
-        queryKey: ['recurrences'],
-        queryFn: recurrenceService.getAll,
+        queryKey: ['recurrences', dashboardId],
+        queryFn: () => recurrenceService.getAll(dashboardId),
+        enabled: !!dashboardId,
     });
 }
 
 export function useCreateRecurrence() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: recurrenceService.create,
+        mutationFn: ({ data, dashboardId }: { data: any; dashboardId: string }) =>
+            recurrenceService.create(data, dashboardId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['recurrences'] });
         },
@@ -21,7 +23,8 @@ export function useCreateRecurrence() {
 export function useUpdateRecurrence() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: ({ id, data }: { id: string; data: any }) => recurrenceService.update(id, data),
+        mutationFn: ({ id, data, dashboardId }: { id: string; data: any; dashboardId: string }) =>
+            recurrenceService.update(id, data, dashboardId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['recurrences'] });
         },
@@ -31,7 +34,8 @@ export function useUpdateRecurrence() {
 export function useDeleteRecurrence() {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: recurrenceService.delete,
+        mutationFn: ({ id, dashboardId }: { id: string; dashboardId: string }) =>
+            recurrenceService.delete(id, dashboardId),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ['recurrences'] });
         },

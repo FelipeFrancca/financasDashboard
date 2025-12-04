@@ -42,12 +42,17 @@ const defaultValues: GoalFormData = {
     color: '#000000',
 };
 
+import { useParams } from 'react-router-dom';
+
+// ... imports
+
 export default function GoalsPage() {
+    const { dashboardId } = useParams<{ dashboardId: string }>();
     const [open, setOpen] = useState(false);
     const [editingGoal, setEditingGoal] = useState<any>(null);
 
     // Hooks
-    const { data: goals = [] } = useGoals();
+    const { data: goals = [] } = useGoals(dashboardId || '');
     const createGoal = useCreateGoal();
     const updateGoal = useUpdateGoal();
     const deleteGoal = useDeleteGoal();
@@ -81,9 +86,9 @@ export default function GoalsPage() {
             };
 
             if (editingGoal) {
-                await updateGoal.mutateAsync({ id: editingGoal.id, data: payload });
+                await updateGoal.mutateAsync({ id: editingGoal.id, data: payload, dashboardId: dashboardId || '' });
             } else {
-                await createGoal.mutateAsync(payload);
+                await createGoal.mutateAsync({ data: payload, dashboardId: dashboardId || '' });
             }
             setOpen(false);
             showSuccess(`Meta ${editingGoal ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
@@ -105,7 +110,7 @@ export default function GoalsPage() {
 
         if (result.isConfirmed) {
             try {
-                await deleteGoal.mutateAsync(id);
+                await deleteGoal.mutateAsync({ id, dashboardId: dashboardId || '' });
                 showSuccess('A meta foi excluída.', { title: 'Excluído!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível excluir a meta.' });

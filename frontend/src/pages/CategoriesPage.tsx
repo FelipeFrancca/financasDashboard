@@ -30,7 +30,12 @@ import {
     useDeleteCategory
 } from '../hooks/api/useCategories';
 
+import { useParams } from 'react-router-dom';
+
+// ... imports
+
 export default function CategoriesPage() {
+    const { dashboardId } = useParams<{ dashboardId: string }>();
     const [open, setOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<any>(null);
     const [formData, setFormData] = useState({
@@ -41,7 +46,7 @@ export default function CategoriesPage() {
     });
 
     // Hooks
-    const { data: categories = [] } = useCategories();
+    const { data: categories = [] } = useCategories(dashboardId || '');
     const createCategory = useCreateCategory();
     const updateCategory = useUpdateCategory();
     const deleteCategory = useDeleteCategory();
@@ -83,9 +88,9 @@ export default function CategoriesPage() {
             };
 
             if (editingCategory) {
-                await updateCategory.mutateAsync({ id: editingCategory.id, data: dataToSend });
+                await updateCategory.mutateAsync({ id: editingCategory.id, data: dataToSend, dashboardId: dashboardId || '' });
             } else {
-                await createCategory.mutateAsync(dataToSend);
+                await createCategory.mutateAsync({ data: dataToSend, dashboardId: dashboardId || '' });
             }
             setOpen(false);
             showSuccess(`Categoria ${editingCategory ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
@@ -107,7 +112,7 @@ export default function CategoriesPage() {
 
         if (result.isConfirmed) {
             try {
-                await deleteCategory.mutateAsync(id);
+                await deleteCategory.mutateAsync({ id, dashboardId: dashboardId || '' });
                 showSuccess('A categoria foi excluída.', { title: 'Excluído!' });
             } catch (error) {
                 showError(error, { title: 'Erro', text: 'Não foi possível excluir a categoria.' });
