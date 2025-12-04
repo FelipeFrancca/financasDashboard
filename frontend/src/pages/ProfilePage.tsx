@@ -24,6 +24,7 @@ import {
   Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { authService } from '../services/api';
 import PageHeader from '../components/PageHeader';
 import UserAvatar from '../components/UserAvatar';
 import { useNotificationPreferences, useUpdateNotificationPreferences } from '../hooks/api/useNotificationPreferences';
@@ -50,9 +51,12 @@ function TabPanel(props: TabPanelProps) {
 }
 
 export default function ProfilePage() {
-  const { user } = useAuth();
+  const { user, reloadUser } = useAuth();
   const [tabValue, setTabValue] = useState(0);
   const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -102,10 +106,34 @@ export default function ProfilePage() {
     setTabValue(newValue);
   };
 
-  const handleSave = () => {
-    // TODO: Call API to update user profile
-    console.log('Saving profile:', formData);
-    setEditing(false);
+  const handleSave = async () => {
+    setSaving(true);
+    setSaveError(null);
+    setSaveSuccess(false);
+
+    try {
+      // Call API to update user profile
+      await authService.updateUser({
+        name: formData.name,
+        // avatar can be added later when file upload is implemented
+      });
+
+      console.log('[ProfilePage] Profile updated successfully');
+
+      // Reload user in AuthContext to sync the new data
+      await reloadUser();
+
+      setEditing(false);
+      setSaveSuccess(true);
+
+      // Hide success message after 3 seconds
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error: any) {
+      console.error('[ProfilePage] Error updating profile:', error);
+      setSaveError(error.response?.data?.error?.message || error.message || 'Erro ao atualizar perfil');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleNotificationChange = (key: string) => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -185,19 +213,37 @@ export default function ProfilePage() {
                     type="email"
                   />
 
+                  {saveSuccess && (
+                    <Alert severity="success">
+                      Perfil atualizado com sucesso!
+                    </Alert>
+                  )}
+
+                  {saveError && (
+                    <Alert severity="error">
+                      {saveError}
+                    </Alert>
+                  )}
+
                   {editing && (
                     <Box sx={{ display: 'flex', gap: 2 }}>
                       <Button
                         variant="contained"
                         startIcon={<SaveIcon />}
                         onClick={handleSave}
+                        disabled={saving}
                       >
-                        Salvar Alterações
+                        {saving ? 'Salvando...' : 'Salvar Alterações'}
                       </Button>
                       <Button
                         variant="outlined"
                         startIcon={<CancelIcon />}
-                        onClick={() => setEditing(false)}
+                        onClick={() => {
+                          setEditing(false);
+                          setSaveError(null);
+                          setSaveSuccess(false);
+                        }}
+                        disabled={saving}
                       >
                         Cancelar
                       </Button>
@@ -283,8 +329,8 @@ export default function ProfilePage() {
             )}
 
             <Box sx={{ mt: 3 }}>
-              <Button 
-                variant="contained" 
+              <Button
+                variant="contained"
                 onClick={handleSavePreferences}
                 disabled={updatePreferences.isPending}
               >

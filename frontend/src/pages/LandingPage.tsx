@@ -20,7 +20,6 @@ import {
     alpha,
 } from '@mui/material';
 import {
-    AccountBalance as AccountBalanceIcon,
     Dashboard as DashboardIcon,
     PersonAdd as PersonAddIcon,
     AccountBalanceWallet as WalletIcon,
@@ -43,6 +42,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { Logo } from '../components/Logo';
 import {
     LineChart,
     Line,
@@ -167,16 +167,13 @@ export default function LandingPage() {
             >
                 <Container maxWidth="xl">
                     <Toolbar disableGutters sx={{ justifyContent: 'space-between', py: 1 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <AccountBalanceIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-                            <Typography
-                                variant="h6"
-                                fontWeight={700}
-                                color="text.primary"
-                                sx={{ letterSpacing: 1, display: { xs: 'none', sm: 'block' } }}
-                            >
-                                FINANÇAS 360°
-                            </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Logo
+                                variant="full"
+                                width={{ xs: 140, sm: 180 }}
+                                sx={{ cursor: 'pointer' }}
+                                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                            />
                         </Box>
                         <Stack direction="row" spacing={{ xs: 1, sm: 2 }}>
                             <Button
@@ -411,54 +408,54 @@ export default function LandingPage() {
                                         transition: 'all 0.3s ease',
                                     }}
                                 >
-                                <Typography variant="h6" fontWeight={600} gutterBottom>
-                                    Receitas vs Despesas
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                    Acompanhe o fluxo mensal do seu dinheiro
-                                </Typography>
-                                <ResponsiveContainer width="100%" height={300}>
-                                    <AreaChart data={monthlyIncomeExpenses}>
-                                        <defs>
-                                            <linearGradient id="colorReceitas" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
-                                                <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                                            </linearGradient>
-                                            <linearGradient id="colorDespesas" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
-                                                <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                                            </linearGradient>
-                                        </defs>
-                                        <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-                                        <XAxis dataKey="month" stroke={theme.palette.text.secondary} />
-                                        <YAxis stroke={theme.palette.text.secondary} />
-                                        <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: theme.palette.background.paper,
-                                                border: `1px solid ${theme.palette.divider}`,
-                                                borderRadius: 8,
-                                            }}
-                                        />
-                                        <Legend />
-                                        <Area
-                                            type="monotone"
-                                            dataKey="receitas"
-                                            stroke="#10b981"
-                                            fillOpacity={1}
-                                            fill="url(#colorReceitas)"
-                                            name="Receitas (R$)"
-                                        />
-                                        <Area
-                                            type="monotone"
-                                            dataKey="despesas"
-                                            stroke="#ef4444"
-                                            fillOpacity={1}
-                                            fill="url(#colorDespesas)"
-                                            name="Despesas (R$)"
-                                        />
-                                    </AreaChart>
-                                </ResponsiveContainer>
-                            </Card>
+                                    <Typography variant="h6" fontWeight={600} gutterBottom>
+                                        Receitas vs Despesas
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                        Acompanhe o fluxo mensal do seu dinheiro
+                                    </Typography>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <AreaChart data={monthlyIncomeExpenses}>
+                                            <defs>
+                                                <linearGradient id="colorReceitas" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.8} />
+                                                    <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                                                </linearGradient>
+                                                <linearGradient id="colorDespesas" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.8} />
+                                                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
+                                            <XAxis dataKey="month" stroke={theme.palette.text.secondary} />
+                                            <YAxis stroke={theme.palette.text.secondary} />
+                                            <Tooltip
+                                                contentStyle={{
+                                                    backgroundColor: theme.palette.background.paper,
+                                                    border: `1px solid ${theme.palette.divider}`,
+                                                    borderRadius: 8,
+                                                }}
+                                            />
+                                            <Legend />
+                                            <Area
+                                                type="monotone"
+                                                dataKey="receitas"
+                                                stroke="#10b981"
+                                                fillOpacity={1}
+                                                fill="url(#colorReceitas)"
+                                                name="Receitas (R$)"
+                                            />
+                                            <Area
+                                                type="monotone"
+                                                dataKey="despesas"
+                                                stroke="#ef4444"
+                                                fillOpacity={1}
+                                                fill="url(#colorDespesas)"
+                                                name="Despesas (R$)"
+                                            />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                </Card>
                             </ScrollAnimation>
                         </Grid>
 
@@ -477,38 +474,38 @@ export default function LandingPage() {
                                         transition: 'all 0.3s ease',
                                     }}
                                 >
-                                <Typography variant="h6" fontWeight={600} gutterBottom>
-                                    Distribuição por Categoria
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                    Entenda para onde vai seu dinheiro
-                                </Typography>
-                                <ResponsiveContainer width="100%" height={300}>
-                                    <PieChart>
-                                        <Pie
-                                            data={categoryData}
-                                            cx="50%"
-                                            cy="50%"
-                                            labelLine={false}
-                                            label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                                            outerRadius={80}
-                                            fill="#8884d8"
-                                            dataKey="value"
-                                        >
-                                            {categoryData.map((entry, index) => (
-                                                <Cell key={`cell-${index}`} fill={entry.color} />
-                                            ))}
-                                        </Pie>
-                                        <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: theme.palette.background.paper,
-                                                border: `1px solid ${theme.palette.divider}`,
-                                                borderRadius: 8,
-                                            }}
-                                        />
-                                    </PieChart>
-                                </ResponsiveContainer>
-                            </Card>
+                                    <Typography variant="h6" fontWeight={600} gutterBottom>
+                                        Distribuição por Categoria
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                        Entenda para onde vai seu dinheiro
+                                    </Typography>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <PieChart>
+                                            <Pie
+                                                data={categoryData}
+                                                cx="50%"
+                                                cy="50%"
+                                                labelLine={false}
+                                                label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                                                outerRadius={80}
+                                                fill="#8884d8"
+                                                dataKey="value"
+                                            >
+                                                {categoryData.map((entry, index) => (
+                                                    <Cell key={`cell-${index}`} fill={entry.color} />
+                                                ))}
+                                            </Pie>
+                                            <Tooltip
+                                                contentStyle={{
+                                                    backgroundColor: theme.palette.background.paper,
+                                                    border: `1px solid ${theme.palette.divider}`,
+                                                    borderRadius: 8,
+                                                }}
+                                            />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </Card>
                             </ScrollAnimation>
                         </Grid>
 
@@ -527,45 +524,45 @@ export default function LandingPage() {
                                         transition: 'all 0.3s ease',
                                     }}
                                 >
-                                <Typography variant="h6" fontWeight={600} gutterBottom>
-                                    Progresso de Orçamentos
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                                    Controle seus gastos por categoria
-                                </Typography>
-                                <Stack spacing={3}>
-                                    {budgetProgress.map((budget, index) => (
-                                        <Box key={index}>
-                                            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                                                <Typography variant="body2" fontWeight={600}>
-                                                    {budget.category}
-                                                </Typography>
-                                                <Typography variant="body2" color="text.secondary">
-                                                    R$ {budget.spent} / R$ {budget.budget}
-                                                </Typography>
-                                            </Box>
-                                            <LinearProgress
-                                                variant="determinate"
-                                                value={budget.percentage}
-                                                sx={{
-                                                    height: 8,
-                                                    borderRadius: 4,
-                                                    bgcolor: alpha(theme.palette.primary.main, 0.1),
-                                                    '& .MuiLinearProgress-bar': {
-                                                        bgcolor:
-                                                            budget.percentage >= 90
-                                                                ? '#ef4444'
-                                                                : budget.percentage >= 75
-                                                                    ? '#f59e0b'
-                                                                    : '#10b981',
+                                    <Typography variant="h6" fontWeight={600} gutterBottom>
+                                        Progresso de Orçamentos
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                                        Controle seus gastos por categoria
+                                    </Typography>
+                                    <Stack spacing={3}>
+                                        {budgetProgress.map((budget, index) => (
+                                            <Box key={index}>
+                                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                                    <Typography variant="body2" fontWeight={600}>
+                                                        {budget.category}
+                                                    </Typography>
+                                                    <Typography variant="body2" color="text.secondary">
+                                                        R$ {budget.spent} / R$ {budget.budget}
+                                                    </Typography>
+                                                </Box>
+                                                <LinearProgress
+                                                    variant="determinate"
+                                                    value={budget.percentage}
+                                                    sx={{
+                                                        height: 8,
                                                         borderRadius: 4,
-                                                    },
-                                                }}
-                                            />
-                                        </Box>
-                                    ))}
-                                </Stack>
-                            </Card>
+                                                        bgcolor: alpha(theme.palette.primary.main, 0.1),
+                                                        '& .MuiLinearProgress-bar': {
+                                                            bgcolor:
+                                                                budget.percentage >= 90
+                                                                    ? '#ef4444'
+                                                                    : budget.percentage >= 75
+                                                                        ? '#f59e0b'
+                                                                        : '#10b981',
+                                                            borderRadius: 4,
+                                                        },
+                                                    }}
+                                                />
+                                            </Box>
+                                        ))}
+                                    </Stack>
+                                </Card>
                             </ScrollAnimation>
                         </Grid>
 
@@ -584,31 +581,31 @@ export default function LandingPage() {
                                         transition: 'all 0.3s ease',
                                     }}
                                 >
-                                <Typography variant="h6" fontWeight={600} gutterBottom>
-                                    Evolução Patrimonial
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                    Acompanhe o crescimento do seu patrimônio
-                                </Typography>
-                                <ResponsiveContainer width="100%" height={300}>
-                                    <LineChart data={trendData}>
-                                        <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
-                                        <XAxis dataKey="month" stroke={theme.palette.text.secondary} />
-                                        <YAxis stroke={theme.palette.text.secondary} />
-                                        <Tooltip
-                                            contentStyle={{
-                                                backgroundColor: theme.palette.background.paper,
-                                                border: `1px solid ${theme.palette.divider}`,
-                                                borderRadius: 8,
-                                            }}
-                                        />
-                                        <Legend />
-                                        <Line type="monotone" dataKey="economia" stroke="#7c3aed" strokeWidth={2} name="Economia (R$)" />
-                                        <Line type="monotone" dataKey="investimentos" stroke="#2563eb" strokeWidth={2} name="Investimentos (R$)" />
-                                        <Line type="monotone" dataKey="reserva" stroke="#10b981" strokeWidth={2} name="Reserva (R$)" />
-                                    </LineChart>
-                                </ResponsiveContainer>
-                            </Card>
+                                    <Typography variant="h6" fontWeight={600} gutterBottom>
+                                        Evolução Patrimonial
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                        Acompanhe o crescimento do seu patrimônio
+                                    </Typography>
+                                    <ResponsiveContainer width="100%" height={300}>
+                                        <LineChart data={trendData}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke={theme.palette.divider} />
+                                            <XAxis dataKey="month" stroke={theme.palette.text.secondary} />
+                                            <YAxis stroke={theme.palette.text.secondary} />
+                                            <Tooltip
+                                                contentStyle={{
+                                                    backgroundColor: theme.palette.background.paper,
+                                                    border: `1px solid ${theme.palette.divider}`,
+                                                    borderRadius: 8,
+                                                }}
+                                            />
+                                            <Legend />
+                                            <Line type="monotone" dataKey="economia" stroke="#7c3aed" strokeWidth={2} name="Economia (R$)" />
+                                            <Line type="monotone" dataKey="investimentos" stroke="#2563eb" strokeWidth={2} name="Investimentos (R$)" />
+                                            <Line type="monotone" dataKey="reserva" stroke="#10b981" strokeWidth={2} name="Reserva (R$)" />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </Card>
                             </ScrollAnimation>
                         </Grid>
                     </Grid>
@@ -736,14 +733,14 @@ export default function LandingPage() {
                                                 opacity: platform.available ? 1 : 0.5,
                                             }}
                                         >
-                                        <IconComponent sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
-                                        <Typography variant="body2" fontWeight={600}>
-                                            {platform.name}
-                                        </Typography>
-                                        {platform.available && (
-                                            <CheckCircleIcon sx={{ fontSize: 16, color: 'success.main', mt: 1 }} />
-                                        )}
-                                    </Paper>
+                                            <IconComponent sx={{ fontSize: 40, color: 'primary.main', mb: 1 }} />
+                                            <Typography variant="body2" fontWeight={600}>
+                                                {platform.name}
+                                            </Typography>
+                                            {platform.available && (
+                                                <CheckCircleIcon sx={{ fontSize: 16, color: 'success.main', mt: 1 }} />
+                                            )}
+                                        </Paper>
                                     </ScrollAnimation>
                                 </Grid>
                             );
@@ -786,23 +783,23 @@ export default function LandingPage() {
                                                 transition: 'all 0.3s ease',
                                             }}
                                         >
-                                        <Box
-                                            sx={{
-                                                p: 2,
-                                                borderRadius: '50%',
-                                                bgcolor: alpha('#ef4444', 0.1),
-                                                mb: 2,
-                                            }}
-                                        >
-                                            <IconComponent sx={{ fontSize: 35, color: '#ef4444' }} />
-                                        </Box>
-                                        <Typography variant="h6" fontWeight={600} gutterBottom>
-                                            {feature.title}
-                                        </Typography>
-                                        <Typography variant="body2" color="text.secondary">
-                                            {feature.description}
-                                        </Typography>
-                                    </Card>
+                                            <Box
+                                                sx={{
+                                                    p: 2,
+                                                    borderRadius: '50%',
+                                                    bgcolor: alpha('#ef4444', 0.1),
+                                                    mb: 2,
+                                                }}
+                                            >
+                                                <IconComponent sx={{ fontSize: 35, color: '#ef4444' }} />
+                                            </Box>
+                                            <Typography variant="h6" fontWeight={600} gutterBottom>
+                                                {feature.title}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                {feature.description}
+                                            </Typography>
+                                        </Card>
                                     </ScrollAnimation>
                                 </Grid>
                             );
@@ -963,11 +960,8 @@ export default function LandingPage() {
                 <Container maxWidth="lg">
                     <Grid container spacing={4}>
                         <Grid item xs={12} md={4}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                                <AccountBalanceIcon sx={{ fontSize: 32, color: 'primary.main' }} />
-                                <Typography variant="h6" fontWeight={700}>
-                                    FINANÇAS 360°
-                                </Typography>
+                            <Box sx={{ mb: 2 }}>
+                                <Logo variant="full" width={160} />
                             </Box>
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                                 A ferramenta definitiva para gerenciamento financeiro pessoal e empresarial.

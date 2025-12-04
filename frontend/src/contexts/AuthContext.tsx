@@ -26,6 +26,7 @@ interface AuthContextType {
   setTokens: (access: string, refresh: string) => void;
   requestPasswordReset: (email: string) => Promise<void>;
   resetPasswordWithCode: (email: string, code: string, password: string) => Promise<void>;
+  reloadUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -71,19 +72,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           Authorization: `Bearer ${token}`,
         },
       });
-      // Backend returns { success: true, data: { user, ... } }
-      setUser(response.data.data || response.data.user);
-    } catch (error) {
-      console.error("Failed to load user:", error);
-      // If token is invalid, clear everything without trying to refresh
-      // This prevents infinite loops when refresh token is also invalid
-      setUser(null);
-      setAccessToken(null);
-      setRefreshToken(null);
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("refreshToken");
-      sessionStorage.removeItem("accessToken");
-      sessionStorage.removeItem("refreshToken");
+      // Backend returns { success: true, data: { user } }
+      const userData = response.data.data?.user || response.data.data || response.data.user;
+
+      if (userData) {
+        setUser(userData);
+        console.log('[AuthContext] User loaded successfully:', userData.email);
+      } else {
+        console.warn('[AuthContext] No user data in response:', response.data);
+        throw new Error('No user data in response');
+      }
+    } catch (error: any) {
+      console.error('[AuthContext] Failed to load user:', error.message);
+
+      // Only clear tokens if it's an authentication error (401/403)
+      // Don't clear on network errors or server errors
+      const isAuthError = error.response?.status === 401 || error.response?.status === 403;
+
+      if (isAuthError) {
+        console.log('[AuthContext] Authentication error, clearing tokens');
+        setUser(null);
+        setAccessToken(null);
+        setRefreshToken(null);
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("refreshToken");
+        sessionStorage.removeItem("accessToken");
+        sessionStorage.removeItem("refreshToken");
+      } else {
+        // For network/server errors, keep user logged in but log the error
+        console.log('[AuthContext] Non-auth error, keeping existing session');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -191,11 +209,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error("No refresh token available");
     }
 
+    console.log('[AuthContext] Refreshing access token...');
+
     const response = await axios.post(`${API_URL}/api/auth/refresh`, {
       refreshToken: currentRefresh,
     });
 
-    const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
+    const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data.data || response.data;
 
     setAccessToken(newAccessToken);
     setRefreshToken(newRefreshToken);
@@ -204,9 +224,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     storage.setItem("accessToken", newAccessToken);
     storage.setItem("refreshToken", newRefreshToken);
 
-    // Reload user with new token
-    // Note: loadUser calls refreshAccessToken on error, so we need to be careful not to loop infinitely.
-    // Here we just update the state.
+    console.log('[AuthContext] Token refreshed successfully, reloading user...');
+
+    // Reload user data with new token (without resetting isLoading)
+    await loadUser(newAccessToken);
   };
 
   const setTokens = (access: string, refresh: string) => {
@@ -239,6 +260,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Expose reloadUser for external use (e.g., after profile update)
+  const reloadUser = async () => {
+    const token = accessToken || localStorage.getItem("accessToken") || sessionStorage.getItem("accessToken");
+    if (token) {
+      console.log('[AuthContext] Manually reloading user...');
+      await loadUser(token);
+    }
+  };
+
+  // Listen for storage changes (e.g., when tokens are updated in another tab or by interceptor)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'accessToken' && e.newValue && e.newValue !== accessToken) {
+        console.log('[AuthContext] Token updated in storage, reloading user...');
+        loadUser(e.newValue);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [accessToken]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -254,6 +297,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setTokens,
         requestPasswordReset,
         resetPasswordWithCode,
+        reloadUser,
       }}
     >
       {children}

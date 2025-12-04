@@ -26,11 +26,11 @@ import {
   Visibility,
   VisibilityOff,
   Google as GoogleIcon,
-  AccountBalance as AccountBalanceIcon,
   Warning as WarningIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 import { showError, showWarning } from "../utils/notifications";
+import { Logo } from "../components/Logo";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -266,10 +266,7 @@ export default function LoginPage() {
           <Box sx={{ p: 4 }}>
             {/* Logo/Header */}
             <Box sx={{ textAlign: "center", mb: 3 }}>
-              <AccountBalanceIcon sx={{ fontSize: 60, color: "primary.main", mb: 1 }} />
-              <Typography variant="h4" component="h1" fontWeight="bold">
-                Finanças Dashboard
-              </Typography>
+              <Logo variant="full" width={200} sx={{ mb: 2 }} />
               <Typography variant="body2" color="text.secondary">
                 Gerencie suas finanças pessoais com facilidade
               </Typography>

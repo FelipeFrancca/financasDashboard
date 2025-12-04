@@ -53,6 +53,7 @@ import { useNavigate, useLocation, Outlet, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import UserAvatar from '../components/UserAvatar';
 import NotificationBell from '../components/NotificationBell';
+import { Logo } from '../components/Logo';
 
 const drawerWidth = 260;
 
@@ -266,10 +267,12 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                     </IconButton>
 
                     <Box sx={{ display: 'flex', alignItems: 'center', flexGrow: 1 }}>
-                        <AccountBalanceWallet sx={{ mr: 1, fontSize: 28 }} />
-                        <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 700, letterSpacing: 1 }}>
-                            FINANÇAS 360°
-                        </Typography>
+                        <Logo
+                            variant="full"
+                            width={{ xs: 120, sm: 160 }}
+                            sx={{ cursor: 'pointer' }}
+                            onClick={() => navigate('/dashboards')}
+                        />
                     </Box>
 
                     <NotificationBell />

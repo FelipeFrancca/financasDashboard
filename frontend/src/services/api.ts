@@ -113,6 +113,11 @@ export const authService = {
     return data.data;
   },
 
+  updateUser: async (userData: { name?: string; avatar?: string }) => {
+    const { data } = await api.put('/auth/me', userData);
+    return data.data;
+  },
+
   refreshToken: async (refreshToken: string) => {
     const { data } = await api.post('/auth/refresh', { refreshToken });
     return data.data;

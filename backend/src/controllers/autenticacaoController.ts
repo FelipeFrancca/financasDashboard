@@ -73,6 +73,37 @@ export const obterUsuarioAtual = async (req: AuthRequest, res: Response) => {
     });
 };
 
+export const atualizarUsuarioAtual = async (req: AuthRequest, res: Response) => {
+    const userId = req.user!.userId;
+    const { name, avatar } = req.body;
+
+    logger.info('Atualização de perfil', 'AuthRoute', { userId });
+
+    const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+            ...(name !== undefined && { name }),
+            ...(avatar !== undefined && { avatar }),
+            updatedAt: new Date(),
+        },
+        select: {
+            id: true,
+            email: true,
+            name: true,
+            avatar: true,
+            emailVerified: true,
+            createdAt: true,
+            updatedAt: true,
+        },
+    });
+
+    res.json({
+        success: true,
+        data: { user: updatedUser },
+        message: 'Perfil atualizado com sucesso',
+    });
+};
+
 export const reenviarBoasVindas = async (req: AuthRequest, res: Response) => {
     try {
         const userId = req.user!.userId;

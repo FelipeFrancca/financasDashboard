@@ -33,6 +33,7 @@ import TransactionForm from '../components/TransactionForm';
 import QuickEntryForm from '../components/QuickEntryForm';
 import FileUpload from '../components/FileUpload';
 import ShortcutsModal from '../components/ShortcutsModal';
+import { Logo } from '../components/Logo';
 import { showSuccess, showError, showConfirm, showWarning } from '../utils/notifications';
 
 interface DashboardProps {
@@ -217,9 +218,11 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
         borderColor: 'divider',
       }}>
         <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700, letterSpacing: 1.5 }}>
-            FINANÇAS 360°
-          </Typography>
+          <Logo
+            variant="full"
+            width={{ xs: 120, sm: 150 }}
+            sx={{ flexGrow: 1 }}
+          />
 
           {!isMobile && (
             <Box sx={{ display: 'flex', gap: 1, mr: 2 }}>

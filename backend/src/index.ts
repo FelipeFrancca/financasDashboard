@@ -105,7 +105,7 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: `.swagger-ui .topbar { display: none }
     .swagger-ui .info { margin: 50px 0; }
     .swagger-ui .scheme-container { background: #fafafa; padding: 20px; }`,
-  customSiteTitle: "Finanças Dashboard API",
+  customSiteTitle: "FinCahrt",
   customfavIcon: "/favicon.ico",
   swaggerOptions: {
     persistAuthorization: true,
