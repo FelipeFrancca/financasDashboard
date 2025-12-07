@@ -4,7 +4,7 @@ import * as notificationPreferencesServico from '../services/notificationPrefere
 // Get notification preferences
 export const obter = async (req: Request, res: Response) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.userId;
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Usuário não autenticado' });
         }
@@ -24,7 +24,7 @@ export const obter = async (req: Request, res: Response) => {
 // Update notification preferences
 export const atualizar = async (req: Request, res: Response) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.userId;
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Usuário não autenticado' });
         }

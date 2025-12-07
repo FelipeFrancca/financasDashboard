@@ -36,7 +36,7 @@ router.get('/vapid-public-key', (req, res) => {
 });
 
 // Apply authentication to remaining routes
-router.use(authenticateToken);
+router.use(authenticateToken as any);
 
 /**
  * GET /api/push/status
@@ -44,7 +44,7 @@ router.use(authenticateToken);
  */
 router.get('/status', async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.userId;
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Usuário não autenticado' });
         }
@@ -75,7 +75,7 @@ router.get('/status', async (req, res) => {
  */
 router.post('/subscribe', async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.userId;
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Usuário não autenticado' });
         }
@@ -112,7 +112,7 @@ router.post('/subscribe', async (req, res) => {
  */
 router.delete('/unsubscribe', async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.userId;
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Usuário não autenticado' });
         }
@@ -147,7 +147,7 @@ router.delete('/unsubscribe', async (req, res) => {
  */
 router.post('/test', async (req, res) => {
     try {
-        const userId = req.user?.id;
+        const userId = req.user?.userId;
         if (!userId) {
             return res.status(401).json({ success: false, message: 'Usuário não autenticado' });
         }

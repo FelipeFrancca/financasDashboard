@@ -55,17 +55,20 @@ api.interceptors.response.use(
         // Try to refresh the token
         const { data } = await api.post('/auth/refresh', { refreshToken });
 
+        // Backend returns { success, data: { accessToken, refreshToken }, message }
+        const tokens = data.data || data;
+
         // Save to the storage where it was found, or default to local
         if (sessionStorage.getItem('refreshToken')) {
-          sessionStorage.setItem('accessToken', data.accessToken);
-          sessionStorage.setItem('refreshToken', data.refreshToken);
+          sessionStorage.setItem('accessToken', tokens.accessToken);
+          sessionStorage.setItem('refreshToken', tokens.refreshToken);
         } else {
-          localStorage.setItem('accessToken', data.accessToken);
-          localStorage.setItem('refreshToken', data.refreshToken);
+          localStorage.setItem('accessToken', tokens.accessToken);
+          localStorage.setItem('refreshToken', tokens.refreshToken);
         }
 
         // Retry original request with new token
-        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+        originalRequest.headers.Authorization = `Bearer ${tokens.accessToken}`;
         return api(originalRequest);
       } catch (refreshError) {
         // If refresh fails, redirect to login

@@ -37,6 +37,31 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
     return outputArray;
 }
 
+// Helper to get service worker with timeout
+async function getServiceWorkerReady(timeoutMs: number = 5000): Promise<ServiceWorkerRegistration | null> {
+    if (!('serviceWorker' in navigator)) {
+        return null;
+    }
+
+    return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+            console.warn('[Push] ServiceWorker.ready timed out, attempting re-registration');
+            resolve(null);
+        }, timeoutMs);
+
+        navigator.serviceWorker.ready
+            .then((registration) => {
+                clearTimeout(timeout);
+                resolve(registration);
+            })
+            .catch((err) => {
+                clearTimeout(timeout);
+                console.error('[Push] ServiceWorker.ready error:', err);
+                resolve(null);
+            });
+    });
+}
+
 export function usePushNotifications(): UsePushNotificationsReturn {
     const [state, setState] = useState<PushNotificationState>({
         isSupported: false,
@@ -79,8 +104,13 @@ export function usePushNotifications(): UsePushNotificationsReturn {
         }
 
         try {
-            const registration = await navigator.serviceWorker.ready;
-            const subscription = await registration.pushManager.getSubscription();
+            // Get service worker with timeout
+            const registration = await getServiceWorkerReady(3000);
+
+            let subscription = null;
+            if (registration) {
+                subscription = await registration.pushManager.getSubscription();
+            }
 
             // Also check with backend
             const response = await api.get('/push/status');
