@@ -29,7 +29,7 @@ import {
   Warning as WarningIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
-import { showWarning, showErrorWithRetry } from "../utils/notifications";
+import { showWarning, showErrorWithRetry, showConfirm } from "../utils/notifications";
 import { Logo } from "../components/Logo";
 
 interface TabPanelProps {
@@ -70,7 +70,7 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  const { login, register, isAuthenticated, isLoading: authLoading, requestPasswordReset, resetPasswordWithCode } = useAuth();
+  const { login, register, isAuthenticated, isLoading: authLoading, requestPasswordReset, verifyResetCode, resetPasswordWithCode } = useAuth();
   const theme = useTheme();
 
   const [tab, setTab] = useState(0);
@@ -81,9 +81,10 @@ export default function LoginPage() {
 
   // Forgot Password State
   const [isForgotPassword, setIsForgotPassword] = useState(false);
-  const [resetStep, setResetStep] = useState(0); // 0: Request Code, 1: Verify Code & New Password
+  const [resetStep, setResetStep] = useState(0); // 0: Email, 1: Verify Code, 2: New Password
   const [resetEmailSent, setResetEmailSent] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [codeDigits, setCodeDigits] = useState(['', '', '', '']);
 
   // Login Form
   const { register: registerLogin, handleSubmit: handleSubmitLogin, watch: watchLogin, formState: { errors: loginErrors } } = useForm({
@@ -99,7 +100,8 @@ export default function LoginPage() {
     defaultValues: {
       email: "",
       code: "",
-      newPassword: ""
+      newPassword: "",
+      confirmPassword: ""
     }
   });
 
@@ -129,9 +131,53 @@ export default function LoginPage() {
       setResetEmailSent(false);
       setResetError(null);
       setResetStep(0);
+      setCodeDigits(['', '', '', '']);
     }
     setIsForgotPassword(!isForgotPassword);
     setLoginError(null);
+  };
+
+  // Handle code digit input
+  const handleCodeDigitChange = (index: number, value: string) => {
+    // Handle paste
+    if (value.length > 1) {
+      const digits = value.slice(0, 4).split('');
+      const newCodeDigits = [...codeDigits];
+      digits.forEach((digit, i) => {
+        if (index + i < 4 && /^\d$/.test(digit)) {
+          newCodeDigits[index + i] = digit;
+        }
+      });
+      setCodeDigits(newCodeDigits);
+      setValueReset('code', newCodeDigits.join(''));
+      // Focus last filled or next empty
+      const nextIndex = Math.min(index + digits.length, 3);
+      const nextInput = document.getElementById(`code-digit-${nextIndex}`);
+      nextInput?.focus();
+      return;
+    }
+    
+    // Single digit
+    if (value === '' || /^\d$/.test(value)) {
+      const newCodeDigits = [...codeDigits];
+      newCodeDigits[index] = value;
+      setCodeDigits(newCodeDigits);
+      setValueReset('code', newCodeDigits.join(''));
+      
+      // Auto-focus next input
+      if (value && index < 3) {
+        const nextInput = document.getElementById(`code-digit-${index + 1}`);
+        nextInput?.focus();
+      }
+    }
+  };
+
+  // Handle backspace on code inputs
+  const handleCodeKeyDown = (index: number, e: React.KeyboardEvent) => {
+    if (e.key === 'Backspace' && !codeDigits[index] && index > 0) {
+      const prevInput = document.getElementById(`code-digit-${index - 1}`);
+      prevInput?.focus();
+    }
   };
 
   // Handle Password Reset Submit
@@ -141,10 +187,45 @@ export default function LoginPage() {
     try {
       if (resetStep === 0) {
         // Step 1: Request Code
-        await requestPasswordReset(data.email);
+        const result = await requestPasswordReset(data.email);
+        
+        if (result.hasExistingToken && !result.sent) {
+          // There's an existing valid token - ask user if they want to resend
+          const expiresInMinutes = Math.ceil((result.expiresIn || 0) / 60);
+          const confirmed = await showConfirm(
+            `Já existe um código de verificação válido para este email (expira em ${expiresInMinutes} minuto${expiresInMinutes !== 1 ? 's' : ''}). Deseja enviar um novo código?`,
+            {
+              title: 'Código Existente',
+              confirmButtonText: 'Enviar novo código',
+              cancelButtonText: 'Usar código atual',
+            }
+          );
+          
+          if (confirmed) {
+            // Resend with force=true
+            await requestPasswordReset(data.email, true);
+          }
+        }
+        // Proceed to code input step
         setResetStep(1);
+        setCodeDigits(['', '', '', '']);
+      } else if (resetStep === 1) {
+        // Step 2: Verify Code with backend
+        const code = codeDigits.join('');
+        if (code.length !== 4) {
+          setResetError('Digite o código de 4 dígitos');
+          return;
+        }
+        // Verify code with backend before allowing password change
+        await verifyResetCode(data.email, code);
+        setValueReset('code', code);
+        setResetStep(2);
       } else {
-        // Step 2: Verify Code and Set New Password
+        // Step 3: Verify Code and Set New Password
+        if (data.newPassword !== data.confirmPassword) {
+          setResetError('As senhas não coincidem');
+          return;
+        }
         await resetPasswordWithCode(data.email, data.code, data.newPassword);
         setResetEmailSent(true);
       }
@@ -423,82 +504,131 @@ export default function LoginPage() {
                       </Alert>
                     </Collapse>
 
-                    <Controller
-                      name="email"
-                      control={controlReset}
-                      rules={{
-                        required: "Email é obrigatório",
-                        pattern: {
-                          value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                          message: "Email inválido"
-                        }
-                      }}
-                      render={({ field }) => (
-                        <TextField
-                          {...field}
-                          fullWidth
-                          label="Email"
-                          type="email"
-                          margin="normal"
-                          autoComplete="email"
-                          disabled={resetStep === 1}
-                          error={!!resetErrors.email}
-                          helperText={resetErrors.email?.message as string}
-                          InputLabelProps={{ shrink: !!field.value || undefined }}
-                        />
-                      )}
-                    />
+                    {/* Step 0: Email Input */}
+                    <Collapse in={resetStep === 0}>
+                      <Controller
+                        name="email"
+                        control={controlReset}
+                        rules={{
+                          required: "Email é obrigatório",
+                          pattern: {
+                            value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                            message: "Email inválido"
+                          }
+                        }}
+                        render={({ field }) => (
+                          <TextField
+                            {...field}
+                            fullWidth
+                            label="Email"
+                            type="email"
+                            margin="normal"
+                            autoComplete="email"
+                            error={!!resetErrors.email}
+                            helperText={resetErrors.email?.message as string}
+                            InputLabelProps={{ shrink: !!field.value || undefined }}
+                          />
+                        )}
+                      />
+                    </Collapse>
 
+                    {/* Step 1: Code Verification with 4 separate inputs */}
                     <Collapse in={resetStep === 1}>
-                      <Controller
-                        name="code"
-                        control={controlReset}
-                        rules={{
-                          required: resetStep === 1 ? "Código é obrigatório" : false,
-                          minLength: { value: 4, message: "Código deve ter 4 dígitos" },
-                          maxLength: { value: 4, message: "Código deve ter 4 dígitos" }
-                        }}
-                        render={({ field }) => (
-                          <TextField
-                            {...field}
-                            fullWidth
-                            label="Código de Verificação (4 dígitos)"
-                            margin="normal"
-                            inputProps={{ maxLength: 4 }}
-                            error={!!resetErrors.code}
-                            helperText={resetErrors.code?.message as string}
-                          />
-                        )}
-                      />
+                      <Box sx={{ textAlign: 'center', my: 2 }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                          Digite o código de 4 dígitos enviado para seu email
+                        </Typography>
+                        <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1, my: 2 }}>
+                          {[0, 1, 2, 3].map((index) => (
+                            <TextField
+                              key={index}
+                              id={`code-digit-${index}`}
+                              value={codeDigits[index]}
+                              onChange={(e) => handleCodeDigitChange(index, e.target.value)}
+                              onKeyDown={(e) => handleCodeKeyDown(index, e)}
+                              onPaste={(e) => {
+                                e.preventDefault();
+                                const pastedData = e.clipboardData.getData('text').replace(/\D/g, '');
+                                handleCodeDigitChange(index, pastedData);
+                              }}
+                              inputProps={{
+                                maxLength: 1,
+                                style: { textAlign: 'center', fontSize: '24px', fontWeight: 'bold' },
+                                inputMode: 'numeric',
+                                pattern: '[0-9]*',
+                              }}
+                              sx={{
+                                width: 56,
+                                '& .MuiOutlinedInput-root': {
+                                  height: 64,
+                                },
+                              }}
+                            />
+                          ))}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          Cole o código ou digite cada dígito
+                        </Typography>
+                      </Box>
+                    </Collapse>
 
-                      <Controller
-                        name="newPassword"
-                        control={controlReset}
-                        rules={{
-                          required: resetStep === 1 ? "Nova senha é obrigatória" : false,
-                          minLength: { value: 8, message: "Senha deve ter no mínimo 8 caracteres" }
-                        }}
-                        render={({ field }) => (
-                          <TextField
-                            {...field}
-                            fullWidth
-                            label="Nova Senha"
-                            type={showPassword ? "text" : "password"}
-                            margin="normal"
-                            error={!!resetErrors.newPassword}
-                            helperText={resetErrors.newPassword?.message as string}
-                            InputProps={{
-                              endAdornment: (
-                                <InputAdornment position="end">
-                                  <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
-                                    {showPassword ? <VisibilityOff /> : <Visibility />}
-                                  </IconButton>
-                                </InputAdornment>
-                              ),
-                            }}
-                          />
-                        )}
-                      />
+                    {/* Step 2: New Password + Confirmation */}
+                    <Collapse in={resetStep === 2}>
+                      <Box sx={{ my: 1 }}>
+                        <Typography variant="body2" color="text.secondary" gutterBottom sx={{ textAlign: 'center', mb: 2 }}>
+                          Código verificado! Agora defina sua nova senha
+                        </Typography>
+                        <Controller
+                          name="newPassword"
+                          control={controlReset}
+                          rules={{
+                            required: resetStep === 2 ? "Nova senha é obrigatória" : false,
+                            minLength: { value: 8, message: "Senha deve ter no mínimo 8 caracteres" },
+                            pattern: {
+                              value: /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+                              message: "Senha deve conter letras maiúsculas, minúsculas e números"
+                            }
+                          }}
+                          render={({ field }) => (
+                            <TextField
+                              {...field}
+                              fullWidth
+                              label="Nova Senha"
+                              type={showPassword ? "text" : "password"}
+                              margin="normal"
+                              error={!!resetErrors.newPassword}
+                              helperText={resetErrors.newPassword?.message as string}
+                              InputProps={{
+                                endAdornment: (
+                                  <InputAdornment position="end">
+                                    <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                                    </IconButton>
+                                  </InputAdornment>
+                                ),
+                              }}
+                            />
+                          )}
+                        />
+                        <Controller
+                          name="confirmPassword"
+                          control={controlReset}
+                          rules={{
+                            required: resetStep === 2 ? "Confirmação é obrigatória" : false,
+                          }}
+                          render={({ field }) => (
+                            <TextField
+                              {...field}
+                              fullWidth
+                              label="Confirmar Nova Senha"
+                              type={showPassword ? "text" : "password"}
+                              margin="normal"
+                              error={!!resetErrors.confirmPassword}
+                              helperText={resetErrors.confirmPassword?.message as string}
+                            />
+                          )}
+                        />
+                      </Box>
                     </Collapse>
 
                     <Button
@@ -506,19 +636,30 @@ export default function LoginPage() {
                       fullWidth
                       variant="contained"
                       size="large"
-                      disabled={isLoading}
+                      disabled={isLoading || (resetStep === 1 && codeDigits.join('').length !== 4)}
                       sx={{ mt: 2, mb: 2 }}
                     >
-                      {isLoading ? <CircularProgress size={24} /> : (resetStep === 0 ? "Enviar Código de Verificação" : "Redefinir Senha")}
+                      {isLoading ? <CircularProgress size={24} /> : (
+                        resetStep === 0 ? "Enviar Código" : 
+                        resetStep === 1 ? "Verificar Código" : 
+                        "Redefinir Senha"
+                      )}
                     </Button>
 
                     <Button
                       fullWidth
                       variant="text"
-                      onClick={toggleForgotPassword}
+                      onClick={() => {
+                        if (resetStep > 0 && !resetEmailSent) {
+                          setResetStep(resetStep - 1);
+                          setResetError(null);
+                        } else {
+                          toggleForgotPassword();
+                        }
+                      }}
                       disabled={isLoading}
                     >
-                      Voltar para Login
+                      {resetStep > 0 && !resetEmailSent ? "Voltar" : "Voltar para Login"}
                     </Button>
                   </form>
                 )}

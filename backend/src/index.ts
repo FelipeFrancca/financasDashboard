@@ -56,7 +56,7 @@ app.use(helmet({
 }));
 
 // CORS Configuration - Suporta múltiplas origens
-const corsOrigin = process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || 'http://localhost:3000,http://localhost:5173';
+const corsOrigin = process.env.CORS_ORIGIN || process.env.CORS_ORIGINS;
 
 // Se CORS_ORIGIN for *, permite todas as origens
 if (corsOrigin === '*') {

@@ -24,9 +24,17 @@ interface AuthContextType {
   logout: () => void;
   refreshAccessToken: () => Promise<void>;
   setTokens: (access: string, refresh: string) => void;
-  requestPasswordReset: (email: string) => Promise<void>;
+  requestPasswordReset: (email: string, force?: boolean) => Promise<PasswordResetResponse>;
+  verifyResetCode: (email: string, code: string) => Promise<void>;
   resetPasswordWithCode: (email: string, code: string, password: string) => Promise<void>;
   reloadUser: () => Promise<void>;
+}
+
+export interface PasswordResetResponse {
+  sent: boolean;
+  hasExistingToken?: boolean;
+  expiresIn?: number;
+  message: string;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -242,11 +250,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadUser(access);
   };
 
-  const requestPasswordReset = async (email: string) => {
+  const requestPasswordReset = async (email: string, force: boolean = false): Promise<PasswordResetResponse> => {
     try {
-      await axios.post(`${API_URL}/api/auth/forgot-password`, { email });
+      const response = await axios.post(`${API_URL}/api/auth/forgot-password`, { email, force });
+      return {
+        sent: response.data.sent,
+        hasExistingToken: response.data.hasExistingToken,
+        expiresIn: response.data.expiresIn,
+        message: response.data.message,
+      };
     } catch (error: any) {
       const message = error.response?.data?.error?.message || "Erro ao solicitar redefinição de senha";
+      throw new Error(message);
+    }
+  };
+
+  const verifyResetCode = async (email: string, code: string) => {
+    try {
+      await axios.post(`${API_URL}/api/auth/verify-code`, { email, code });
+    } catch (error: any) {
+      const message = error.response?.data?.error?.message || "Código inválido";
       throw new Error(message);
     }
   };
@@ -296,6 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshAccessToken,
         setTokens,
         requestPasswordReset,
+        verifyResetCode,
         resetPasswordWithCode,
         reloadUser,
       }}

@@ -90,7 +90,6 @@ export interface Account {
   closingDay?: number;
   dueDay?: number;
   createdAt: string;
-  createdAt: string;
   updatedAt: string;
 }
 

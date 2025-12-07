@@ -13,9 +13,17 @@ const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || '';
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:admin@finchart.com.br';
 
+let vapidInitialized = false;
+
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-    webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
-    logger.info('Push notifications initialized with VAPID keys');
+    try {
+        webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+        vapidInitialized = true;
+        logger.info('Push notifications initialized with VAPID keys');
+    } catch (error: any) {
+        logger.error('Failed to initialize VAPID keys:', error.message);
+        logger.warn('Push notifications disabled due to invalid VAPID keys');
+    }
 } else {
     logger.warn('VAPID keys not configured - push notifications disabled');
 }
@@ -31,7 +39,7 @@ export function getVapidPublicKey(): string {
  * Check if push notifications are configured
  */
 export function isPushEnabled(): boolean {
-    return !!(VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY);
+    return vapidInitialized;
 }
 
 /**

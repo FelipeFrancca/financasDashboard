@@ -158,7 +158,6 @@ Abra um **novo terminal**:
 cd frontend
 bun install
 bun run dev
-# Frontend rodando em: http://localhost:5173
 ```
 
 ---

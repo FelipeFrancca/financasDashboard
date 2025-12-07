@@ -27,14 +27,14 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || "30d";
 
-// Configure email transporter
+// Configure email transporter (using same SMTP config as emailServico)
 const emailTransporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: parseInt(process.env.EMAIL_PORT || "587"),
-  secure: process.env.EMAIL_SECURE === "true",
+  host: process.env.SMTP_HOST || 'smtp-relay.sendinblue.com',
+  port: parseInt(process.env.SMTP_PORT || "587"),
+  secure: process.env.SMTP_SECURE === "true",
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   },
 });
 
@@ -231,22 +231,34 @@ export async function googleAuth(data: GoogleUserData): Promise<{ user: Omit<Use
 }
 
 // Request password reset
-export async function requestPasswordReset(email: string): Promise<void> {
+export type PasswordResetResult = {
+  sent: boolean;
+  hasExistingToken?: boolean;
+  expiresIn?: number; // seconds remaining
+};
+
+export async function requestPasswordReset(email: string, force: boolean = false): Promise<PasswordResetResult> {
   const user = await (prisma as any).user.findUnique({
     where: { email },
   });
 
   if (!user) {
-    // Don't reveal if user exists
-    return;
+    // Don't reveal if user exists - pretend we sent
+    return { sent: true };
   }
 
   // Check if there is already a valid token
   if (user.resetToken && user.resetTokenExpiry && user.resetTokenExpiry > new Date()) {
-    // Token is still valid, do not send a new one (throttling)
-    // We return silently to avoid revealing information, or we could throw an error if we want to inform the user
-    // User requirement: "nao devemos enviar um novo enquanto esse ainda estiver valido"
-    return;
+    if (!force) {
+      // Return info about existing token so frontend can ask for confirmation
+      const expiresIn = Math.ceil((user.resetTokenExpiry.getTime() - Date.now()) / 1000);
+      return {
+        sent: false,
+        hasExistingToken: true,
+        expiresIn,
+      };
+    }
+    // If force=true, continue to generate new token
   }
 
   // Generate 4-digit code
@@ -280,10 +292,37 @@ export async function requestPasswordReset(email: string): Promise<void> {
         </div>
       `,
     });
+    return { sent: true };
   } catch (error) {
     console.error("Erro ao enviar email:", error);
     throw new Error("Erro ao enviar email de redefinição");
   }
+}
+
+// Verify reset code without changing password
+export async function verifyResetCode(email: string, code: string): Promise<{ valid: boolean; message?: string }> {
+  const user = await (prisma as any).user.findUnique({
+    where: { email },
+  });
+
+  if (!user) {
+    // Don't reveal if user exists
+    return { valid: false, message: "Código inválido" };
+  }
+
+  if (!user.resetToken || !user.resetTokenExpiry) {
+    return { valid: false, message: "Nenhum código de redefinição ativo" };
+  }
+
+  if (user.resetTokenExpiry < new Date()) {
+    return { valid: false, message: "Código expirado" };
+  }
+
+  if (user.resetToken !== code) {
+    return { valid: false, message: "Código incorreto" };
+  }
+
+  return { valid: true };
 }
 
 // Reset password with code

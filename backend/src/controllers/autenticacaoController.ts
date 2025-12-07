@@ -38,10 +38,41 @@ export const googleCallback = (req: Request, res: Response) => {
 
 export const esqueciSenha = async (req: Request, res: Response) => {
     logger.info("Solicitação de reset de senha", "AuthRoute", { email: req.body.email });
-    await authService.requestPasswordReset(req.body.email);
+    const { email, force } = req.body;
+    const result = await authService.requestPasswordReset(email, force === true);
+
+    if (result.hasExistingToken && !result.sent) {
+        // There's an existing valid token - inform frontend
+        return res.json({
+            success: true,
+            sent: false,
+            hasExistingToken: true,
+            expiresIn: result.expiresIn,
+            message: "Já existe um código válido para este email",
+        });
+    }
+
     res.json({
         success: true,
-        message: "Se o email existir, um link de redefinição será enviado",
+        sent: true,
+        message: "Se o email existir, um código de redefinição será enviado",
+    });
+};
+
+export const verificarCodigo = async (req: Request, res: Response) => {
+    const { email, code } = req.body;
+    const result = await authService.verifyResetCode(email, code);
+
+    if (!result.valid) {
+        return res.status(400).json({
+            success: false,
+            error: { message: result.message || "Código inválido" },
+        });
+    }
+
+    res.json({
+        success: true,
+        message: "Código verificado com sucesso",
     });
 };
 
@@ -64,8 +95,9 @@ export const atualizarToken = async (req: Request, res: Response) => {
     });
 };
 
-export const obterUsuarioAtual = async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.userId;
+export const obterUsuarioAtual = async (req: Request, res: Response) => {
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.userId;
     const user = await authService.getUserById(userId);
     res.json({
         success: true,
@@ -73,8 +105,9 @@ export const obterUsuarioAtual = async (req: AuthRequest, res: Response) => {
     });
 };
 
-export const atualizarUsuarioAtual = async (req: AuthRequest, res: Response) => {
-    const userId = req.user!.userId;
+export const atualizarUsuarioAtual = async (req: Request, res: Response) => {
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.userId;
     const { name, avatar } = req.body;
 
     logger.info('Atualização de perfil', 'AuthRoute', { userId });
@@ -104,9 +137,10 @@ export const atualizarUsuarioAtual = async (req: AuthRequest, res: Response) => 
     });
 };
 
-export const reenviarBoasVindas = async (req: AuthRequest, res: Response) => {
+export const reenviarBoasVindas = async (req: Request, res: Response) => {
     try {
-        const userId = req.user!.userId;
+        const authReq = req as AuthRequest;
+        const userId = authReq.user!.userId;
 
         const user = await prisma.user.findUnique({
             where: { id: userId },

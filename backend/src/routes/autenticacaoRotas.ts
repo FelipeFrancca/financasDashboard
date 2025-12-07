@@ -58,9 +58,10 @@ router.get(
     authController.googleCallback
 );
 
-router.post("/forgot-password", authLimiter, validateBody(forgotPasswordSchema), asyncHandler(authController.esqueciSenha as any));
-router.post("/reset-password", strictLimiter, validateBody(resetPasswordSchema), asyncHandler(authController.redefinirSenha as any));
-router.post("/refresh", validateBody(refreshTokenSchema), asyncHandler(authController.atualizarToken as any));
+router.post("/forgot-password", authLimiter, validateBody(forgotPasswordSchema), asyncHandler(authController.esqueciSenha));
+router.post("/verify-code", strictLimiter, asyncHandler(authController.verificarCodigo));
+router.post("/reset-password", strictLimiter, validateBody(resetPasswordSchema), asyncHandler(authController.redefinirSenha));
+router.post("/refresh", validateBody(refreshTokenSchema), asyncHandler(authController.atualizarToken));
 router.get("/me", authenticateToken, asyncHandler(authController.obterUsuarioAtual as any));
 router.put("/me", authenticateToken, asyncHandler(authController.atualizarUsuarioAtual as any));
 router.post("/resend-welcome", authenticateToken, asyncHandler(authController.reenviarBoasVindas as any));

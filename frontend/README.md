@@ -20,7 +20,6 @@ Certifique-se que `VITE_API_URL` aponta para seu backend (ex: `http://localhost:
 ```bash
 bun run dev
 ```
-Acesse: **http://localhost:5173**
 
 ## 🛠️ Scripts
 

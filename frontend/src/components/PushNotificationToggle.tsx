@@ -3,7 +3,7 @@
  * Allows users to enable/disable push notifications from their profile
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
     Box,
     Button,

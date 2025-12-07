@@ -46,7 +46,7 @@ import Papa from 'papaparse';
 import { ingestionService, transactionService } from '../services/api';
 import { showError, showErrorWithRetry, showSuccess, showWarning, showConfirm } from '../utils/notifications';
 import { useCategories, useCreateCategory } from '../hooks/api/useCategories';
-import type { Transaction } from '../types';
+import type { Transaction, Category } from '../types';
 import { hoverLift } from '../utils/animations';
 
 interface ExtractedItem {
