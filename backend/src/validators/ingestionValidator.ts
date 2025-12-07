@@ -21,7 +21,7 @@ export const transactionItemSchema = z.object({
 export const extractionResultSchema = z.object({
     merchant: z.string().nullable().optional(),
     date: z.string().nullable().optional(),
-    amount: z.number().positive('Valor deve ser positivo'),
+    amount: z.number().nonnegative('Valor não pode ser negativo'),
     category: z.string().nullable().optional(),
     items: z.array(transactionItemSchema).nullable().optional(),
     confidence: z.number().min(0).max(1),

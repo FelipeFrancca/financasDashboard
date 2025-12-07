@@ -25,12 +25,12 @@ export async function createCategory(
     const { checkPermission } = await import('./paineisServico');
     await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
-    // Validar se parent existe e pertence ao dashboard (ou é sistema)
+    // Validar se parent existe e pertence ao usuário (ou é sistema)
     if (dto.parentId) {
         const parent = await prisma.category.findFirst({
             where: {
                 id: dto.parentId,
-                OR: [{ dashboardId }, { isSystem: true, dashboardId: null }],
+                OR: [{ userId }, { isSystem: true, userId: null }],
                 deletedAt: null,
             },
         });
@@ -45,11 +45,11 @@ export async function createCategory(
         }
     }
 
-    // Verificar duplicidade de nome para o dashboard
+    // Verificar duplicidade de nome para o usuário
     const existing = await prisma.category.findFirst({
         where: {
             name: dto.name,
-            dashboardId,
+            userId,
             type: dto.type,
             deletedAt: null,
         },
@@ -61,8 +61,12 @@ export async function createCategory(
 
     const category = await prisma.category.create({
         data: {
-            ...dto,
-            dashboardId,
+            name: dto.name,
+            type: dto.type,
+            icon: dto.icon,
+            color: dto.color,
+            parentId: dto.parentId,
+            userId,
             isSystem: false,
         },
     });
@@ -85,8 +89,8 @@ export async function getCategories(
         isActive: dto.isActive !== undefined ? dto.isActive : true,
         ...(dto.type && { type: dto.type }),
         OR: [
-            { dashboardId },
-            ...(dto.includeSystem ? [{ isSystem: true, dashboardId: null }] : []),
+            { userId },
+            ...(dto.includeSystem ? [{ isSystem: true, userId: null }] : []),
         ],
     };
 
@@ -124,7 +128,7 @@ export async function getCategoryById(
     const category = await prisma.category.findFirst({
         where: {
             id,
-            OR: [{ dashboardId }, { isSystem: true, dashboardId: null }],
+            OR: [{ userId }, { isSystem: true, userId: null }],
             deletedAt: null,
         },
     });
@@ -146,7 +150,7 @@ export async function updateCategory(
     await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
     const category = await prisma.category.findFirst({
-        where: { id, dashboardId, deletedAt: null },
+        where: { id, userId, deletedAt: null },
     });
 
     if (!category) {
@@ -158,7 +162,7 @@ export async function updateCategory(
         const parent = await prisma.category.findFirst({
             where: {
                 id: dto.parentId,
-                OR: [{ dashboardId }, { isSystem: true, dashboardId: null }],
+                OR: [{ userId }, { isSystem: true, userId: null }],
                 deletedAt: null,
             },
         });
@@ -191,7 +195,7 @@ export async function deleteCategory(
     await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
     const category = await prisma.category.findFirst({
-        where: { id, dashboardId, deletedAt: null },
+        where: { id, userId, deletedAt: null },
         include: { children: true },
     });
 

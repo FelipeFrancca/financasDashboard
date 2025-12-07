@@ -53,10 +53,26 @@ export async function uploadFinancialDocument(
     }
 
     try {
+        // Extrai categorias do corpo da requisição (se houver)
+        let categories: string[] = [];
+        if (req.body.categories) {
+            try {
+                // Se vier como string JSON (comum em FormData), faz parse
+                if (typeof req.body.categories === 'string') {
+                    categories = JSON.parse(req.body.categories);
+                } else if (Array.isArray(req.body.categories)) {
+                    categories = req.body.categories;
+                }
+            } catch (e) {
+                logger.warn('Erro ao fazer parse das categorias', 'IngestionController', { error: e });
+            }
+        }
+
         // Processa o arquivo
         const result = await ingestionService.processFile(
             buffer,
-            mimetype as SupportedMimeType
+            mimetype as SupportedMimeType,
+            categories
         );
 
         // Valida o resultado da extração

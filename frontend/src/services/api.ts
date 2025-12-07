@@ -141,7 +141,9 @@ export const transactionService = {
   },
 
   createMany: async (transactions: Omit<Transaction, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<{ count: number; transactions: Transaction[] }> => {
-    const { data } = await api.post('/transactions/bulk', transactions);
+    // Extract dashboardId from first transaction, backend expects { dashboardId, transactions }
+    const dashboardId = transactions[0]?.dashboardId;
+    const { data } = await api.post('/transactions/bulk', { dashboardId, transactions });
     return data.data;
   },
 
@@ -150,8 +152,8 @@ export const transactionService = {
     return data.data;
   },
 
-  delete: async (id: string): Promise<void> => {
-    await api.delete(`/transactions/${id}`);
+  delete: async (id: string, dashboardId: string): Promise<void> => {
+    await api.delete(`/transactions/${id}`, { params: { dashboardId } });
   },
 
   getStats: async (filters?: TransactionFilters): Promise<StatsSummary> => {
@@ -171,6 +173,15 @@ export const dashboardService = {
     return data.data;
   },
 
+  update: async (id: string, updates: { title?: string; description?: string }) => {
+    const { data } = await api.put(`/dashboards/${id}`, updates);
+    return data.data;
+  },
+
+  delete: async (id: string) => {
+    await api.delete(`/dashboards/${id}`);
+  },
+
   createInvite: async (dashboardId: string, opts?: { role?: 'VIEWER' | 'EDITOR'; expiresAt?: string; isOneTime?: boolean }) => {
     const { data } = await api.post(`/dashboards/${dashboardId}/invites`, opts || {});
     return data.data;
@@ -184,7 +195,22 @@ export const dashboardService = {
   getSharedPreview: async (code: string) => {
     const { data } = await api.get(`/dashboards/shared/${code}`);
     return data.data;
-  }
+  },
+
+  // Members management
+  getMembers: async (dashboardId: string) => {
+    const { data } = await api.get(`/dashboards/${dashboardId}/members`);
+    return data.data;
+  },
+
+  addMember: async (dashboardId: string, email: string, role: 'VIEWER' | 'EDITOR') => {
+    const { data } = await api.post(`/dashboards/${dashboardId}/members`, { email, role });
+    return data.data;
+  },
+
+  removeMember: async (dashboardId: string, userId: string) => {
+    await api.delete(`/dashboards/${dashboardId}/members/${userId}`);
+  },
 };
 
 export const categoryService = {
@@ -194,6 +220,7 @@ export const categoryService = {
     return data.data?.data || data.data || [];
   },
   create: async (category: any, dashboardId: string) => {
+    console.log('Frontend sending category create:', { ...category, dashboardId });
     const { data } = await api.post('/categories', { ...category, dashboardId });
     return data.data;
   },
@@ -309,9 +336,13 @@ export const alertService = {
 };
 
 export const ingestionService = {
-  upload: async (file: File) => {
+  upload: async (file: File, categories?: string[]) => {
     const formData = new FormData();
     formData.append('file', file);
+
+    if (categories && categories.length > 0) {
+      formData.append('categories', JSON.stringify(categories));
+    }
 
     const { data } = await api.post('/ingestion/upload', formData, {
       headers: {

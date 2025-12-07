@@ -5,9 +5,6 @@ import {
   useTheme,
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
-import AddIcon from '@mui/icons-material/Add';
-import UploadFileIcon from '@mui/icons-material/UploadFile';
-import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import type { Transaction, TransactionFilters } from '../types';
 import MetricsCards from '../components/MetricsCards';
 import FiltersCard from '../components/FiltersCard';
@@ -15,11 +12,10 @@ import ChartsSection from '../components/ChartsSection';
 import TransactionsTable from '../components/TransactionsTable';
 import TransactionForm from '../components/TransactionForm';
 import QuickEntryForm from '../components/QuickEntryForm';
-import FileUpload from '../components/FileUpload';
+import UnifiedImport from '../components/UnifiedImport';
 import PageHeader from '../components/PageHeader';
-import EmptyState from '../components/EmptyState';
 import { DashboardSkeleton } from '../components/Skeletons';
-import { showSuccess, showError, showConfirm, showWarning } from '../utils/notifications';
+import { showSuccess, showErrorWithRetry, showConfirm, showWarning } from '../utils/notifications';
 import {
   useTransactions,
   useTransactionStats,
@@ -71,26 +67,31 @@ export default function DashboardFinancial() {
 
     if (result.isConfirmed) {
       try {
-        await deleteTransaction.mutateAsync(id);
+        if (dashboardId) {
+          await deleteTransaction.mutateAsync({ id, dashboardId });
+        }
         showSuccess('Transação removida com sucesso.', { title: 'Excluído!' });
       } catch (error) {
-        showError(error, { title: 'Erro', text: 'Não foi possível excluir a transação.' });
+        showErrorWithRetry(error, () => handleDeleteTransaction(id));
       }
     }
   };
 
   const handleSaveTransaction = async (data: Partial<Transaction>) => {
     try {
+      // Ensure dashboardId is included
+      const transactionData = { ...data, dashboardId };
+      
       if (selectedTransaction) {
-        await updateTransaction.mutateAsync({ id: selectedTransaction.id, data });
+        await updateTransaction.mutateAsync({ id: selectedTransaction.id, data: transactionData });
         showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!' });
       } else {
-        await createTransaction.mutateAsync(data as any);
+        await createTransaction.mutateAsync(transactionData as any);
         showSuccess('Transação criada com sucesso.', { title: 'Criado!' });
       }
       setShowTransactionForm(false);
     } catch (error) {
-      showError(error, { title: 'Erro', text: 'Não foi possível salvar a transação.' });
+      showErrorWithRetry(error, () => handleSaveTransaction(data));
     }
   };
 
@@ -99,7 +100,7 @@ export default function DashboardFinancial() {
       const result = await createManyTransactions.mutateAsync(importedTransactions as any);
       showSuccess(`${result.count} transações importadas com sucesso.`, { title: 'Importado!', timer: 3000 });
     } catch (error) {
-      showError(error, { title: 'Erro', text: 'Não foi possível importar as transações.' });
+      showErrorWithRetry(error, () => handleImport(importedTransactions));
     }
   };
 
@@ -161,7 +162,7 @@ export default function DashboardFinancial() {
     );
   }
 
-  // Empty state
+  // Empty state - show only import section
   if (!hasData) {
     return (
       <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -172,33 +173,10 @@ export default function DashboardFinancial() {
             { label: 'Financeiro' }
           ]}
         />
-        <EmptyState
-          icon={<ReceiptLongIcon sx={{ fontSize: '80px' }} />}
-          title="Nenhuma transação ainda"
-          description="Comece adicionando sua primeira transação manualmente ou importe dados de um arquivo CSV/Excel para começar a visualizar seus gráficos e relatórios financeiros."
-          actions={[
-            {
-              label: 'Adicionar Transação',
-              onClick: handleNewTransaction,
-              variant: 'contained',
-              startIcon: <AddIcon />,
-            },
-            {
-              label: 'Importar Dados',
-              onClick: () => {
-                // Scroll to import section or open import dialog
-                const uploadSection = document.querySelector('#upload-section');
-                uploadSection?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              },
-              variant: 'outlined',
-              startIcon: <UploadFileIcon />,
-            },
-          ]}
-        />
         
-        {/* Show upload and quick entry even when empty */}
-        <Box id="upload-section" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(3, 1fr)' }, gap: 3, mt: 4 }}>
-          <FileUpload onImport={handleImport} />
+        {/* Import e Entrada Rápida */}
+        <Box id="upload-section" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, gap: 3 }}>
+          <UnifiedImport onImportCSV={handleImport} />
           <QuickEntryForm onSave={handleSaveTransaction} onRefetch={refetch} />
         </Box>
 
@@ -227,9 +205,9 @@ export default function DashboardFinancial() {
         ]}
       />
 
-      {/* Upload e Entrada Rápida */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'repeat(3, 1fr)' }, gap: 3, mb: 4 }}>
-        <FileUpload onImport={handleImport} />
+      {/* Import e Entrada Rápida */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, gap: 3, mb: 4 }}>
+        <UnifiedImport onImportCSV={handleImport} />
         <QuickEntryForm onSave={handleSaveTransaction} onRefetch={refetch} />
       </Box>
 

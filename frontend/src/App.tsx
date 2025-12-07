@@ -26,7 +26,10 @@ const JoinDashboardPage = lazy(() => import('./pages/JoinDashboardPage'));
 const CreateDashboardPage = lazy(() => import('./pages/CreateDashboardPage'));
 const ProfilePage = lazy(() => import('./pages/ProfilePage'));
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
-const IngestionPage = lazy(() => import('./pages/IngestionPage'));
+const TransactionsPage = lazy(() => import('./pages/TransactionsPage'));
+const MembersPage = lazy(() => import('./pages/MembersPage'));
+const DashboardSettingsPage = lazy(() => import('./pages/DashboardSettingsPage'));
+const ItemAnalysisPage = lazy(() => import('./pages/ItemAnalysisPage'));
 
 const PageLoader = () => (
   <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -59,7 +62,7 @@ function App() {
   };
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <AuthProvider>
@@ -94,10 +97,10 @@ function App() {
                 <Route path="/dashboard/:dashboardId/recurrences" element={<RecurrencesPage />} />
                 <Route path="/dashboard/:dashboardId/transfers" element={<TransfersPage />} />
                 <Route path="/dashboard/:dashboardId/alerts" element={<AlertsPage />} />
-                <Route path="/dashboard/:dashboardId/members" element={<div>Members Page</div>} />
-                <Route path="/dashboard/:dashboardId/settings" element={<div>Dashboard Settings Page</div>} />
-                <Route path="/dashboard/:dashboardId/ingestion" element={<IngestionPage />} />
-                <Route path="/dashboard/:dashboardId/transactions" element={<div>Transactions Page</div>} />
+                <Route path="/dashboard/:dashboardId/members" element={<MembersPage />} />
+                <Route path="/dashboard/:dashboardId/settings" element={<DashboardSettingsPage />} />
+                <Route path="/dashboard/:dashboardId/transactions" element={<TransactionsPage />} />
+                <Route path="/dashboard/:dashboardId/items" element={<ItemAnalysisPage />} />
 
                 {/* User profile and notifications */}
                 <Route path="/profile" element={<ProfilePage />} />

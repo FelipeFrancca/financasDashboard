@@ -11,6 +11,7 @@ import { AccountType, AccountStatus } from '@prisma/client';
 // ============================================
 
 export const createAccountSchema = z.object({
+    dashboardId: z.string(),
     name: z.string()
         .min(3, 'Nome deve ter no mínimo 3 caracteres')
         .max(100, 'Nome deve ter no máximo 100 caracteres')
@@ -54,7 +55,7 @@ export const createAccountSchema = z.object({
         .max(500, 'Descrição muito longa')
         .trim()
         .optional(),
-}).refine(
+}).passthrough().refine(
     (data) => {
         // Cartão de crédito deve ter limite
         if (data.type === AccountType.CREDIT_CARD && !data.creditLimit) {
@@ -75,6 +76,7 @@ export type CreateAccountDTO = z.infer<typeof createAccountSchema>;
 // ============================================
 
 export const updateAccountSchema = z.object({
+    dashboardId: z.string(),
     name: z.string()
         .min(3)
         .max(100)
@@ -130,6 +132,8 @@ export type UpdateAccountDTO = z.infer<typeof updateAccountSchema>;
 // ============================================
 
 export const queryAccountsSchema = z.object({
+    dashboardId: z.string().cuid(), // Required for multi-dashboard support
+
     type: z.nativeEnum(AccountType)
         .optional(),
 

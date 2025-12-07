@@ -1,3 +1,11 @@
+export interface TransactionItem {
+  id?: string;
+  description: string;
+  quantity: number;
+  unitPrice?: number;
+  totalPrice: number;
+}
+
 export interface Transaction {
   id: string;
   dashboardId: string;
@@ -19,6 +27,7 @@ export interface Transaction {
   isThirdParty?: boolean;
   thirdPartyName?: string;
   thirdPartyDescription?: string;
+  items?: TransactionItem[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -35,6 +44,7 @@ export interface TransactionFilters {
   minAmount?: string;
   dashboardId?: string;
   ownership?: 'all' | 'client' | 'thirdParty';
+  accountId?: string;
 }
 
 export interface StatsSummary {
@@ -60,4 +70,38 @@ export interface CardBrandMeta {
   bg: string;
   border: string;
   text: string;
+}
+export interface Account {
+  id: string;
+  name: string;
+  type: 'CHECKING' | 'SAVINGS' | 'CREDIT_CARD' | 'INVESTMENT' | 'CASH' | 'OTHER';
+  institution?: string;
+  currency: string;
+  initialBalance: number;
+  currentBalance: number;
+  availableBalance: number;
+  creditLimit?: number;
+  status: 'ACTIVE' | 'INACTIVE' | 'CLOSED';
+  isPrimary: boolean;
+  color?: string;
+  icon?: string;
+  description?: string;
+  userId: string;
+  closingDay?: number;
+  dueDay?: number;
+  createdAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  type: 'Receita' | 'Despesa';
+  icon?: string;
+  color?: string;
+  parentId?: string;
+  isSystem: boolean;
+  isActive: boolean;
+  order: number;
 }

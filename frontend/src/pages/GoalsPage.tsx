@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import { Edit, Delete } from '@mui/icons-material';
 import PageHeader from '../components/PageHeader';
-import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import { showSuccess, showErrorWithRetry, showConfirm } from '../utils/notifications';
 import { useForm, Controller } from 'react-hook-form';
 import {
     useGoals,
@@ -25,6 +25,7 @@ import {
     useUpdateGoal,
     useDeleteGoal
 } from '../hooks/api/useGoals';
+import { useDashboardPermissions } from '../hooks/api/useDashboardPermissions';
 
 interface GoalFormData {
     name: string;
@@ -53,6 +54,7 @@ export default function GoalsPage() {
 
     // Hooks
     const { data: goals = [] } = useGoals(dashboardId || '');
+    const { canEdit } = useDashboardPermissions();
     const createGoal = useCreateGoal();
     const updateGoal = useUpdateGoal();
     const deleteGoal = useDeleteGoal();
@@ -93,7 +95,7 @@ export default function GoalsPage() {
             setOpen(false);
             showSuccess(`Meta ${editingGoal ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
         } catch (error) {
-            showError(error, { title: 'Erro', text: 'Não foi possível salvar a meta.' });
+            showErrorWithRetry(error, () => onSubmit(data));
         }
     };
 
@@ -113,7 +115,7 @@ export default function GoalsPage() {
                 await deleteGoal.mutateAsync({ id, dashboardId: dashboardId || '' });
                 showSuccess('A meta foi excluída.', { title: 'Excluído!' });
             } catch (error) {
-                showError(error, { title: 'Erro', text: 'Não foi possível excluir a meta.' });
+                showErrorWithRetry(error, () => handleDelete(id));
             }
         }
     };
@@ -129,8 +131,8 @@ export default function GoalsPage() {
                     { label: 'Dashboards', to: '/dashboards' },
                     { label: 'Metas' }
                 ]}
-                actionLabel="Nova Meta"
-                onAction={() => handleOpen()}
+                actionLabel={canEdit ? "Nova Meta" : undefined}
+                onAction={canEdit ? () => handleOpen() : undefined}
             />
 
             <Grid container spacing={3}>
@@ -140,19 +142,21 @@ export default function GoalsPage() {
                         <Grid item xs={12} md={6} lg={4} key={goal.id}>
                             <Card>
                                 <CardContent>
-                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                                        <Typography variant="h6" fontWeight={600}>
-                                            {goal.name}
-                                        </Typography>
-                                        <Box>
-                                            <IconButton size="small" onClick={() => handleOpen(goal)}>
-                                                <Edit fontSize="small" />
-                                            </IconButton>
-                                            <IconButton size="small" color="error" onClick={() => handleDelete(goal.id)}>
-                                                <Delete fontSize="small" />
-                                            </IconButton>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                                            <Typography variant="h6" fontWeight={600}>
+                                                {goal.name}
+                                            </Typography>
+                                            {canEdit && (
+                                                <Box>
+                                                    <IconButton size="small" onClick={() => handleOpen(goal)}>
+                                                        <Edit fontSize="small" />
+                                                    </IconButton>
+                                                    <IconButton size="small" color="error" onClick={() => handleDelete(goal.id)}>
+                                                        <Delete fontSize="small" />
+                                                    </IconButton>
+                                                </Box>
+                                            )}
                                         </Box>
-                                    </Box>
 
                                     <Typography variant="h4" fontWeight={700} color="primary.main" gutterBottom>
                                         {formatCurrency(goal.currentAmount)}
@@ -186,7 +190,10 @@ export default function GoalsPage() {
                 {goals.length === 0 && (
                     <Grid item xs={12}>
                         <Typography variant="body1" color="text.secondary" align="center" sx={{ py: 4 }}>
-                            Nenhuma meta cadastrada. Comece criando uma nova meta!
+                            {canEdit 
+                                ? "Nenhuma meta cadastrada. Comece criando uma nova meta!"
+                                : "Nenhuma meta foi cadastrada neste dashboard ainda."
+                            }
                         </Typography>
                     </Grid>
                 )}

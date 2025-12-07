@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
     Box,
     Container,
-    Button,
     Card,
     CardContent,
     Table,
@@ -12,46 +11,37 @@ import {
     TableHead,
     TableRow,
     IconButton,
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    DialogActions,
-    TextField,
-    MenuItem,
     Chip,
+    useTheme,
 } from '@mui/material';
-import { Edit, Delete } from '@mui/icons-material';
+import { Edit, Delete, Category as CategoryIcon } from '@mui/icons-material';
+import { useParams } from 'react-router-dom';
 import PageHeader from '../components/PageHeader';
-import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import EmptyState from '../components/EmptyState';
+import CategoryForm from '../components/CategoryForm';
+import { showSuccess, showErrorWithRetry, showConfirm } from '../utils/notifications';
 import {
     useCategories,
     useCreateCategory,
     useUpdateCategory,
     useDeleteCategory
 } from '../hooks/api/useCategories';
-
-import { useParams } from 'react-router-dom';
-
-// ... imports
+import { useDashboardPermissions } from '../hooks/api/useDashboardPermissions';
 
 export default function CategoriesPage() {
     const { dashboardId } = useParams<{ dashboardId: string }>();
+    const theme = useTheme();
     const [open, setOpen] = useState(false);
     const [editingCategory, setEditingCategory] = useState<any>(null);
-    const [formData, setFormData] = useState({
-        name: '',
-        type: 'EXPENSE',
-        color: '#000000',
-        icon: '',
-    });
 
     // Hooks
-    const { data: categories = [] } = useCategories(dashboardId || '');
+    const { data: categories = [], isLoading } = useCategories(dashboardId || '');
+    const { canEdit } = useDashboardPermissions();
     const createCategory = useCreateCategory();
     const updateCategory = useUpdateCategory();
     const deleteCategory = useDeleteCategory();
 
-    // Normalize type values from backend (can be "Receita"/"Despesa" or "INCOME"/"EXPENSE")
+    // Normalize type values from backend
     const normalizeType = (type: string) => {
         if (type === 'Receita') return 'INCOME';
         if (type === 'Despesa') return 'EXPENSE';
@@ -59,43 +49,22 @@ export default function CategoriesPage() {
     };
 
     const handleOpen = (category?: any) => {
-        if (category) {
-            setEditingCategory(category);
-            setFormData({
-                name: category.name,
-                type: normalizeType(category.type),
-                color: category.color || '#000000',
-                icon: category.icon || '',
-            });
-        } else {
-            setEditingCategory(null);
-            setFormData({
-                name: '',
-                type: 'EXPENSE',
-                color: '#000000',
-                icon: '',
-            });
-        }
+        setEditingCategory(category || null);
         setOpen(true);
     };
 
-    const handleSave = async () => {
+    const handleSave = async (data: any) => {
         try {
-            // Converter tipo de volta para português antes de enviar ao backend
-            const dataToSend = {
-                ...formData,
-                type: formData.type === 'INCOME' ? 'Receita' : 'Despesa',
-            };
-
             if (editingCategory) {
-                await updateCategory.mutateAsync({ id: editingCategory.id, data: dataToSend, dashboardId: dashboardId || '' });
+                await updateCategory.mutateAsync({ id: editingCategory.id, data, dashboardId: dashboardId || '' });
+                showSuccess('Categoria atualizada com sucesso!');
             } else {
-                await createCategory.mutateAsync({ data: dataToSend, dashboardId: dashboardId || '' });
+                await createCategory.mutateAsync({ data, dashboardId: dashboardId || '' });
+                showSuccess('Categoria criada com sucesso!');
             }
             setOpen(false);
-            showSuccess(`Categoria ${editingCategory ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
         } catch (error) {
-            showError(error, { title: 'Erro', text: 'Não foi possível salvar a categoria.' });
+            showErrorWithRetry(error, () => handleSave(data));
         }
     };
 
@@ -107,29 +76,69 @@ export default function CategoriesPage() {
                 icon: 'warning',
                 confirmButtonText: 'Sim, excluir',
                 cancelButtonText: 'Cancelar',
+                confirmButtonColor: theme.palette.error.main,
             }
         );
 
         if (result.isConfirmed) {
             try {
                 await deleteCategory.mutateAsync({ id, dashboardId: dashboardId || '' });
-                showSuccess('A categoria foi excluída.', { title: 'Excluído!' });
+                showSuccess('Categoria excluída com sucesso!');
             } catch (error) {
-                showError(error, { title: 'Erro', text: 'Não foi possível excluir a categoria.' });
+                showErrorWithRetry(error, () => handleDelete(id));
             }
         }
     };
 
+    const hasData = categories.length > 0;
+
+    if (!isLoading && !hasData) {
+        return (
+            <Container maxWidth="lg" sx={{ py: 4 }}>
+                <PageHeader
+                    title="Categorias"
+                    breadcrumbs={[
+                        { label: 'Dashboards', to: '/dashboards' },
+                        { label: 'Categorias' }
+                    ]}
+                    actionLabel={canEdit ? "Nova Categoria" : undefined}
+                    onAction={canEdit ? () => handleOpen() : undefined}
+                />
+                <EmptyState
+                    icon={<CategoryIcon sx={{ fontSize: '80px' }} />}
+                    title="Nenhuma categoria cadastrada"
+                    description={canEdit 
+                        ? "Crie categorias para organizar suas transações."
+                        : "Nenhuma categoria foi criada neste dashboard ainda."
+                    }
+                    actions={canEdit ? [
+                        {
+                            label: 'Nova Categoria',
+                            onClick: () => handleOpen(),
+                            variant: 'contained',
+                        },
+                    ] : []}
+                />
+                <CategoryForm
+                    open={open}
+                    category={editingCategory}
+                    onClose={() => setOpen(false)}
+                    onSave={handleSave}
+                />
+            </Container>
+        );
+    }
+
     return (
-        <Container maxWidth="lg">
+        <Container maxWidth="lg" sx={{ py: 4 }}>
             <PageHeader
                 title="Categorias"
                 breadcrumbs={[
                     { label: 'Dashboards', to: '/dashboards' },
                     { label: 'Categorias' }
                 ]}
-                actionLabel="Nova Categoria"
-                onAction={() => handleOpen()}
+                actionLabel={canEdit ? "Nova Categoria" : undefined}
+                onAction={canEdit ? () => handleOpen() : undefined}
             />
 
             <Card>
@@ -147,10 +156,19 @@ export default function CategoriesPage() {
                                 {categories.map((category: any) => {
                                     const type = normalizeType(category.type);
                                     return (
-                                        <TableRow key={category.id}>
+                                        <TableRow key={category.id} hover>
                                             <TableCell>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                    <Box sx={{ width: 16, height: 16, borderRadius: '50%', bgcolor: category.color }} />
+                                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                    <Box
+                                                        sx={{
+                                                            width: 24,
+                                                            height: 24,
+                                                            borderRadius: '50%',
+                                                            bgcolor: category.color,
+                                                            border: '1px solid',
+                                                            borderColor: 'divider'
+                                                        }}
+                                                    />
                                                     {category.name}
                                                 </Box>
                                             </TableCell>
@@ -159,68 +177,36 @@ export default function CategoriesPage() {
                                                     label={type === 'INCOME' ? 'Receita' : 'Despesa'}
                                                     color={type === 'INCOME' ? 'success' : 'error'}
                                                     size="small"
+                                                    variant="outlined"
                                                 />
                                             </TableCell>
                                             <TableCell align="center">
-                                                <IconButton onClick={() => handleOpen(category)} color="primary">
-                                                    <Edit />
-                                                </IconButton>
-                                                <IconButton onClick={() => handleDelete(category.id)} color="error">
-                                                    <Delete />
-                                                </IconButton>
+                                                {canEdit && (
+                                                    <>
+                                                        <IconButton onClick={() => handleOpen(category)} color="primary" size="small">
+                                                            <Edit fontSize="small" />
+                                                        </IconButton>
+                                                        <IconButton onClick={() => handleDelete(category.id)} color="error" size="small">
+                                                            <Delete fontSize="small" />
+                                                        </IconButton>
+                                                    </>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     );
                                 })}
-                                {categories.length === 0 && (
-                                    <TableRow>
-                                        <TableCell colSpan={3} align="center">
-                                            Nenhuma categoria cadastrada.
-                                        </TableCell>
-                                    </TableRow>
-                                )}
                             </TableBody>
                         </Table>
                     </TableContainer>
                 </CardContent>
             </Card>
 
-            <Dialog open={open} onClose={() => setOpen(false)} disableEnforceFocus>
-                <DialogTitle>{editingCategory ? 'Editar Categoria' : 'Nova Categoria'}</DialogTitle>
-                <DialogContent>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1, minWidth: 300 }}>
-                        <TextField
-                            label="Nome"
-                            fullWidth
-                            value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        />
-                        <TextField
-                            select
-                            label="Tipo"
-                            fullWidth
-                            value={formData.type}
-                            onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                        >
-                            <MenuItem value="INCOME">Receita</MenuItem>
-                            <MenuItem value="EXPENSE">Despesa</MenuItem>
-                        </TextField>
-                        <TextField
-                            label="Cor (Hex)"
-                            fullWidth
-                            type="color"
-                            value={formData.color}
-                            onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                        />
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setOpen(false)}>Cancelar</Button>
-                    <Button variant="contained" onClick={handleSave}>
-                        Salvar
-                    </Button>
-                </DialogActions>
-            </Dialog>
+            <CategoryForm
+                open={open}
+                category={editingCategory}
+                onClose={() => setOpen(false)}
+                onSave={handleSave}
+            />
         </Container>
     );
 }

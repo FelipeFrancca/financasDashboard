@@ -4,7 +4,7 @@ import FileDownload from '@mui/icons-material/FileDownload';
 import { useRef } from 'react';
 import Papa from 'papaparse';
 import type { Transaction } from '../types';
-import { showError } from '../utils/notifications';
+import { showErrorWithRetry } from '../utils/notifications';
 
 interface FileUploadProps {
   onImport: (transactions: Partial<Transaction>[]) => void;
@@ -17,36 +17,40 @@ export default function FileUpload({ onImport }: FileUploadProps) {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      delimiter: ';',
-      complete: (results) => {
-        try {
-          const transactions = results.data.map((row: any) => ({
-            date: parseDate(row.Data),
-            entryType: row.Tipo,
-            flowType: row.Fluxo || 'Variável',
-            category: row.Categoria || 'Outros',
-            subcategory: row.Subcategoria,
-            description: row.Descricao || row.Descrição,
-            amount: parseFloat(row.Valor?.replace(',', '.')) || 0,
-            paymentMethod: row.MetodoPag || row.Pagamento,
-            institution: row.Fonte || row.Banco,
-            cardBrand: row.Bandeira || row.Cartao,
-            installmentTotal: parseInt(row.ParcelasTotal, 10) || 0,
-            installmentNumber: parseInt(row.ParcelaAtual, 10) || 0,
-            installmentStatus: row.StatusParcela || 'N/A',
-            notes: row.Observacao,
-            isTemporary: false,
-          })).filter((t: any) => t.date && t.entryType && t.description);
+    const processFile = () => {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        delimiter: ';',
+        complete: (results) => {
+          try {
+            const transactions = results.data.map((row: any) => ({
+              date: parseDate(row.Data),
+              entryType: row.Tipo,
+              flowType: row.Fluxo || 'Variável',
+              category: row.Categoria || 'Outros',
+              subcategory: row.Subcategoria,
+              description: row.Descricao || row.Descrição,
+              amount: parseFloat(row.Valor?.replace(',', '.')) || 0,
+              paymentMethod: row.MetodoPag || row.Pagamento,
+              institution: row.Fonte || row.Banco,
+              cardBrand: row.Bandeira || row.Cartao,
+              installmentTotal: parseInt(row.ParcelasTotal, 10) || 0,
+              installmentNumber: parseInt(row.ParcelaAtual, 10) || 0,
+              installmentStatus: row.StatusParcela || 'N/A',
+              notes: row.Observacao,
+              isTemporary: false,
+            })).filter((t: any) => t.date && t.entryType && t.description);
 
-          onImport(transactions);
-        } catch (error) {
-          showError(error, { title: 'Erro', text: 'Não foi possível processar o arquivo CSV.' });
-        }
-      },
-    });
+            onImport(transactions);
+          } catch (error) {
+            showErrorWithRetry(error, processFile, { title: 'Erro', text: 'Não foi possível processar o arquivo CSV.' });
+          }
+        },
+      });
+    };
+
+    processFile();
 
     // Reset input
     if (fileInputRef.current) {

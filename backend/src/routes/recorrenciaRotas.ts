@@ -1,3 +1,4 @@
+
 import { Router } from 'express';
 import * as recorrenciaController from '../controllers/recorrenciaController';
 import { authenticateToken } from '../middleware/auth';
@@ -9,16 +10,22 @@ const router = Router();
 
 // Schema simplificado (ideal mover para DTO)
 const createRecurringSchema = z.object({
-    description: z.string(),
-    amount: z.number(),
-    frequency: z.enum(['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY']),
-    startDate: z.coerce.date(),
-    category: z.string(),
+    dashboardId: z.string(),
     entryType: z.enum(['Receita', 'Despesa']),
-});
+    flowType: z.enum(['Fixa', 'Variável']),
+    category: z.string(),
+    subcategory: z.string().optional(),
+    description: z.string(),
+    amount: z.number().positive(),
+    accountId: z.string().optional(),
+    frequency: z.enum(['DAILY', 'WEEKLY', 'BIWEEKLY', 'MONTHLY', 'BIMONTHLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY']),
+    interval: z.number().int().positive().default(1),
+    startDate: z.coerce.date(),
+    endDate: z.coerce.date().optional().nullable(),
+}).passthrough();
 
-router.post('/', authenticateToken, validateBody(createRecurringSchema), asyncHandler(recorrenciaController.criarRecorrencia as any as any));
-router.get('/', authenticateToken, asyncHandler(recorrenciaController.listarRecorrencias as any as any));
-router.post('/process', authenticateToken, asyncHandler(recorrenciaController.processarRecorrencias as any as any));
+router.post('/', authenticateToken, validateBody(createRecurringSchema), asyncHandler(recorrenciaController.criarRecorrente as any));
+router.get('/', authenticateToken, asyncHandler(recorrenciaController.listarRecorrentes as any));
+router.post('/process', authenticateToken, asyncHandler(recorrenciaController.processarRecorrencias as any));
 
 export default router;

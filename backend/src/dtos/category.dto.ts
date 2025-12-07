@@ -8,6 +8,7 @@ import { z } from 'zod';
 // ============================================
 
 export const createCategorySchema = z.object({
+    dashboardId: z.string(), // Relaxed from cuid() to string() to avoid format issues
     name: z.string()
         .min(2, 'Nome deve ter no mínimo 2 caracteres')
         .max(50, 'Nome deve ter no máximo 50 caracteres')
@@ -23,7 +24,7 @@ export const createCategorySchema = z.object({
     parentId: z.string().cuid().optional().nullable(),
 
     order: z.number().int().min(0).optional(),
-});
+}).passthrough();
 
 export type CreateCategoryDTO = z.infer<typeof createCategorySchema>;
 
@@ -32,6 +33,7 @@ export type CreateCategoryDTO = z.infer<typeof createCategorySchema>;
 // ============================================
 
 export const updateCategorySchema = z.object({
+    dashboardId: z.string().cuid(),
     name: z.string().min(2).max(50).trim().optional(),
     type: z.enum(['Receita', 'Despesa']).optional(),
     icon: z.string().max(50).optional(),
@@ -48,6 +50,7 @@ export type UpdateCategoryDTO = z.infer<typeof updateCategorySchema>;
 // ============================================
 
 export const queryCategoriesSchema = z.object({
+    dashboardId: z.string().cuid(), // Required for multi-dashboard support
     type: z.enum(['Receita', 'Despesa']).optional(),
     isActive: z.coerce.boolean().optional(),
     parentId: z.string().optional(), // 'null' string to filter root categories

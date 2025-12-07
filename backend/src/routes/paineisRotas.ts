@@ -10,6 +10,8 @@ const router = Router();
 // CRUD de dashboards
 router.get('/', authenticateToken, asyncHandler(paineisController.listarDashboards as any));
 router.post('/', authenticateToken, asyncHandler(paineisController.criarDashboard as any));
+router.put('/:id', authenticateToken, validateParams(idParamSchema), asyncHandler(paineisController.atualizarDashboard as any));
+router.delete('/:id', authenticateToken, validateParams(idParamSchema), asyncHandler(paineisController.excluirDashboard as any));
 
 // Convites
 router.post('/accept-invite', authenticateToken, asyncHandler(paineisController.aceitarConvite as any));

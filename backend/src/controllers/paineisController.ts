@@ -30,6 +30,17 @@ export const criarDashboard = async (req: AuthRequest, res: Response) => {
     res.status(201).json({ success: true, data: dashboard });
 };
 
+export const atualizarDashboard = async (req: AuthRequest, res: Response) => {
+    const { title, description } = req.body;
+    const dashboard = await paineisServico.updateDashboard(req.user!.userId, req.params.id, { title, description });
+    res.json({ success: true, data: dashboard });
+};
+
+export const excluirDashboard = async (req: AuthRequest, res: Response) => {
+    await paineisServico.deleteDashboard(req.user!.userId, req.params.id);
+    res.status(204).send();
+};
+
 
 export const criarConvite = async (req: AuthRequest, res: Response) => {
     const { role, expiresAt, isOneTime } = req.body;

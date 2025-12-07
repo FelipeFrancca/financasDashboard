@@ -23,7 +23,7 @@ import {
 } from '@mui/material';
 import { Edit, Delete } from '@mui/icons-material';
 import PageHeader from '../components/PageHeader';
-import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import { showSuccess, showErrorWithRetry, showConfirm } from '../utils/notifications';
 import { useForm, Controller } from 'react-hook-form';
 import {
     useBudgets,
@@ -32,6 +32,7 @@ import {
     useDeleteBudget
 } from '../hooks/api/useBudgets';
 import { useCategories } from '../hooks/api/useCategories';
+import { useDashboardPermissions } from '../hooks/api/useDashboardPermissions';
 
 interface BudgetFormData {
     name: string;
@@ -59,6 +60,7 @@ export default function BudgetsPage() {
     // Hooks
     const { data: budgets = [] } = useBudgets(dashboardId || '');
     const { data: categories = [] } = useCategories(dashboardId || '');
+    const { canEdit } = useDashboardPermissions();
     const createBudget = useCreateBudget();
     const updateBudget = useUpdateBudget();
     const deleteBudget = useDeleteBudget();
@@ -110,7 +112,7 @@ export default function BudgetsPage() {
             showSuccess(`Orçamento ${editingBudget ? 'atualizado' : 'criado'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
         } catch (error) {
             console.error('Error saving budget:', error);
-            showError(error, { title: 'Erro', text: 'Não foi possível salvar o orçamento.' });
+            showErrorWithRetry(error, () => onSubmit(data));
         }
     };
 
@@ -130,7 +132,7 @@ export default function BudgetsPage() {
                 await deleteBudget.mutateAsync({ id, dashboardId: dashboardId || '' });
                 showSuccess('O orçamento foi excluído.', { title: 'Excluído!' });
             } catch (error) {
-                showError(error, { title: 'Erro', text: 'Não foi possível excluir o orçamento.' });
+                showErrorWithRetry(error, () => handleDelete(id));
             }
         }
     };
@@ -143,8 +145,8 @@ export default function BudgetsPage() {
                     { label: 'Dashboards', to: '/dashboards' },
                     { label: 'Orçamentos' }
                 ]}
-                actionLabel="Novo Orçamento"
-                onAction={() => handleOpen()}
+                actionLabel={canEdit ? "Novo Orçamento" : undefined}
+                onAction={canEdit ? () => handleOpen() : undefined}
             />
 
             <Card>
@@ -193,12 +195,16 @@ export default function BudgetsPage() {
                                                 </Box>
                                             </TableCell>
                                             <TableCell align="center">
-                                                <IconButton onClick={() => handleOpen(budget)} color="primary">
-                                                    <Edit />
-                                                </IconButton>
-                                                <IconButton onClick={() => handleDelete(budget.id)} color="error">
-                                                    <Delete />
-                                                </IconButton>
+                                                {canEdit && (
+                                                    <>
+                                                        <IconButton onClick={() => handleOpen(budget)} color="primary">
+                                                            <Edit />
+                                                        </IconButton>
+                                                        <IconButton onClick={() => handleDelete(budget.id)} color="error">
+                                                            <Delete />
+                                                        </IconButton>
+                                                    </>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     );
@@ -206,7 +212,10 @@ export default function BudgetsPage() {
                                 {budgets.length === 0 && (
                                     <TableRow>
                                         <TableCell colSpan={7} align="center">
-                                            Nenhum orçamento cadastrado.
+                                            {canEdit 
+                                                ? "Nenhum orçamento cadastrado."
+                                                : "Nenhum orçamento foi cadastrado neste dashboard ainda."
+                                            }
                                         </TableCell>
                                     </TableRow>
                                 )}

@@ -12,11 +12,18 @@ export const criarOrcamento = async (req: AuthRequest, res: Response) => {
 };
 
 export const listarOrcamentos = async (req: AuthRequest, res: Response) => {
-    const { dashboardId } = req.query;
+    const { dashboardId, page, limit, ...rest } = req.query;
     if (!dashboardId || typeof dashboardId !== 'string') {
         return res.status(400).json({ success: false, error: 'dashboardId é obrigatório' });
     }
-    const orcamentos = await orcamentosServico.getBudgets(req.query as any, dashboardId, req.user!.userId);
+
+    const queryDto = {
+        ...rest,
+        page: page ? parseInt(page as string, 10) : 1,
+        limit: limit ? parseInt(limit as string, 10) : 10,
+    };
+
+    const orcamentos = await orcamentosServico.getBudgets(queryDto as any, dashboardId, req.user!.userId);
     res.json({ success: true, data: orcamentos });
 };
 

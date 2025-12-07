@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import {
   Card,
   CardHeader,
@@ -19,6 +19,7 @@ import {
   Divider,
   TablePagination,
   useTheme,
+  Collapse,
 } from '@mui/material';
 import {
   Edit,
@@ -26,9 +27,12 @@ import {
   Add,
   FileDownload,
   Person,
+  KeyboardArrowDown,
+  KeyboardArrowUp,
 } from '@mui/icons-material';
 import { useResponsive } from '../hooks/useResponsive';
 import LoadingSkeleton from './LoadingSkeleton';
+import TransactionItemsEditor from './TransactionItemsEditor';
 import type { Transaction } from '../types';
 import { fadeIn, hoverLift } from '../utils/animations';
 
@@ -39,6 +43,7 @@ interface TransactionsTableProps {
   onDelete: (id: string) => void;
   onNew: () => void;
   onExport: () => void;
+  canEdit?: boolean;
 }
 
 export default function TransactionsTable({
@@ -47,12 +52,18 @@ export default function TransactionsTable({
   onEdit,
   onDelete,
   onNew,
-  onExport
+  onExport,
+  canEdit = true,
 }: TransactionsTableProps) {
   const theme = useTheme();
   const { isMobile } = useResponsive();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
+
+  const toggleRow = (id: string) => {
+    setOpenRows((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -92,11 +103,13 @@ export default function TransactionsTable({
                   <FileDownload />
                 </IconButton>
               </Tooltip>
-              <Tooltip title="Nova">
-                <IconButton onClick={onNew} color="primary" size="small">
-                  <Add />
-                </IconButton>
-              </Tooltip>
+              {canEdit && (
+                <Tooltip title="Nova">
+                  <IconButton onClick={onNew} color="primary" size="small">
+                    <Add />
+                  </IconButton>
+                </Tooltip>
+              )}
             </Stack>
           }
         />
@@ -156,11 +169,18 @@ export default function TransactionsTable({
                     </Box>
 
                     {transaction.isThirdParty && (
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 1 }}>
-                        <Person fontSize="small" color="action" />
-                        <Typography variant="caption" color="text.secondary">
-                          {transaction.thirdPartyName || 'Terceiro'}
-                        </Typography>
+                      <Box sx={{ mb: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Person fontSize="small" color="action" />
+                          <Typography variant="caption" color="text.secondary">
+                            {transaction.thirdPartyName || 'Terceiro'}
+                          </Typography>
+                        </Box>
+                        {transaction.thirdPartyDescription && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', ml: 3, fontStyle: 'italic' }}>
+                            {transaction.thirdPartyDescription}
+                          </Typography>
+                        )}
                       </Box>
                     )}
 
@@ -172,17 +192,33 @@ export default function TransactionsTable({
                         sx={{ fontSize: '0.7rem' }}
                       />
                     )}
+
+                    {transaction.items && transaction.items.length > 0 && (
+                      <Box sx={{ mt: 2 }}>
+                        <Divider sx={{ mb: 1 }} />
+                        <TransactionItemsEditor
+                          items={transaction.items}
+                          onChange={() => {}}
+                          readOnly
+                          defaultExpanded={false}
+                        />
+                      </Box>
+                    )}
                   </CardContent>
 
                   <Divider />
 
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 1, gap: 1 }}>
-                    <IconButton size="small" onClick={() => onEdit(transaction)} color="primary">
-                      <Edit fontSize="small" />
-                    </IconButton>
-                    <IconButton size="small" onClick={() => onDelete(transaction.id)} color="error">
-                      <Delete fontSize="small" />
-                    </IconButton>
+                    {canEdit && (
+                      <>
+                        <IconButton size="small" onClick={() => onEdit(transaction)} color="primary">
+                          <Edit fontSize="small" />
+                        </IconButton>
+                        <IconButton size="small" onClick={() => onDelete(transaction.id)} color="error">
+                          <Delete fontSize="small" />
+                        </IconButton>
+                      </>
+                    )}
                   </Box>
                 </Card>
               ))}
@@ -216,9 +252,11 @@ export default function TransactionsTable({
             <Button startIcon={<FileDownload />} onClick={onExport} size="small" variant="outlined">
               Exportar
             </Button>
-            <Button startIcon={<Add />} onClick={onNew} variant="contained">
-              Nova
-            </Button>
+            {canEdit && (
+              <Button startIcon={<Add />} onClick={onNew} variant="contained">
+                Nova
+              </Button>
+            )}
           </Box>
         }
       />
@@ -227,6 +265,7 @@ export default function TransactionsTable({
           <Table>
             <TableHead>
               <TableRow>
+                <TableCell />
                 <TableCell>Data</TableCell>
                 <TableCell>Tipo</TableCell>
                 <TableCell>Categoria</TableCell>
@@ -239,7 +278,7 @@ export default function TransactionsTable({
             <TableBody>
               {paginatedTransactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
                     <Typography variant="body2" color="text.secondary">
                       Nenhuma transação encontrada
                     </Typography>
@@ -247,62 +286,122 @@ export default function TransactionsTable({
                 </TableRow>
               ) : (
                 paginatedTransactions.map((transaction) => (
-                  <TableRow
-                    key={transaction.id}
-                    hover
-                    sx={{
-                      cursor: 'pointer',
-                      '&:hover': {
-                        backgroundColor: theme.palette.action.hover,
-                      },
-                    }}
-                  >
-                    <TableCell>{formatDate(transaction.date)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={transaction.entryType}
-                        size="small"
-                        color={transaction.entryType === 'Receita' ? 'success' : 'error'}
-                      />
-                    </TableCell>
-                    <TableCell>{transaction.category}</TableCell>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {transaction.description}
-                        {transaction.isThirdParty && (
-                          <Tooltip title={`Compra de Terceiro: ${transaction.thirdPartyName || 'N/A'}`}>
-                            <Person fontSize="small" color="action" />
-                          </Tooltip>
-                        )}
-                      </Box>
-                    </TableCell>
-                    <TableCell
-                      align="right"
+                  <React.Fragment key={transaction.id}>
+                    <TableRow
+                      hover
                       sx={{
-                        fontWeight: 600,
-                        color: transaction.entryType === 'Receita' ? 'success.main' : 'error.main'
+                        cursor: 'pointer',
+                        '&:hover': {
+                          backgroundColor: theme.palette.action.hover,
+                        },
+                        backgroundColor: openRows[transaction.id] ? theme.palette.action.selected : 'inherit',
                       }}
+                      onClick={() => toggleRow(transaction.id)}
                     >
-                      {formatCurrency(transaction.amount)}
-                    </TableCell>
-                    <TableCell>
-                      {transaction.installmentTotal > 0
-                        ? `${transaction.installmentNumber}/${transaction.installmentTotal}`
-                        : '—'}
-                    </TableCell>
-                    <TableCell align="center">
-                      <Tooltip title="Editar">
-                        <IconButton size="small" onClick={() => onEdit(transaction)}>
-                          <Edit fontSize="small" />
+                      <TableCell>
+                        <IconButton
+                          aria-label="expand row"
+                          size="small"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleRow(transaction.id);
+                          }}
+                        >
+                          {openRows[transaction.id] ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
                         </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Excluir">
-                        <IconButton size="small" color="error" onClick={() => onDelete(transaction.id)}>
-                          <Delete fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
+                      </TableCell>
+                      <TableCell>{formatDate(transaction.date)}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={transaction.entryType}
+                          size="small"
+                          color={transaction.entryType === 'Receita' ? 'success' : 'error'}
+                        />
+                      </TableCell>
+                      <TableCell>{transaction.category}</TableCell>
+                      <TableCell>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          {transaction.description}
+                          {transaction.isThirdParty && (
+                            <Tooltip 
+                              title={
+                                <Box sx={{ textAlign: 'center' }}>
+                                  <Typography variant="body2" fontWeight="bold">Compra de Terceiro</Typography>
+                                  <Typography variant="body2">{transaction.thirdPartyName || 'N/A'}</Typography>
+                                  {transaction.thirdPartyDescription && (
+                                    <Typography variant="caption" sx={{ display: 'block', mt: 0.5, fontStyle: 'italic' }}>
+                                      "{transaction.thirdPartyDescription}"
+                                    </Typography>
+                                  )}
+                                </Box>
+                              }
+                              arrow
+                            >
+                              <Person fontSize="small" color="action" />
+                            </Tooltip>
+                          )}
+                          {transaction.items && transaction.items.length > 0 && (
+                            <Chip 
+                              label={`${transaction.items.length} itens`} 
+                              size="small" 
+                              variant="outlined" 
+                              sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
+                            />
+                          )}
+                        </Box>
+                      </TableCell>
+                      <TableCell
+                        align="right"
+                        sx={{
+                          fontWeight: 600,
+                          color: transaction.entryType === 'Receita' ? 'success.main' : 'error.main'
+                        }}
+                      >
+                        {formatCurrency(transaction.amount)}
+                      </TableCell>
+                      <TableCell>
+                        {transaction.installmentTotal > 0
+                          ? `${transaction.installmentNumber}/${transaction.installmentTotal}`
+                          : '—'}
+                      </TableCell>
+                      <TableCell align="center">
+                        {canEdit && (
+                          <>
+                            <Tooltip title="Editar">
+                              <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}>
+                                <Edit fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Excluir">
+                              <IconButton size="small" color="error" onClick={(e) => { e.stopPropagation(); onDelete(transaction.id); }}>
+                                <Delete fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          </>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={8}>
+                        <Collapse in={openRows[transaction.id]} timeout="auto" unmountOnExit>
+                          <Box sx={{ margin: 1 }}>
+                            {transaction.items && transaction.items.length > 0 ? (
+                              <TransactionItemsEditor
+                                items={transaction.items}
+                                onChange={() => {}}
+                                readOnly
+                                defaultExpanded={true}
+                              />
+                            ) : (
+                              <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                                Nenhum item detalhado para esta transação.
+                              </Typography>
+                            )}
+                          </Box>
+                        </Collapse>
+                      </TableCell>
+                    </TableRow>
+                  </React.Fragment>
                 ))
               )}
             </TableBody>

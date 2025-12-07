@@ -71,6 +71,7 @@ export async function getAllTransactions(filters: TransactionFilters = {}, dashb
   return prisma.transaction.findMany({
     where,
     orderBy: { date: "desc" },
+    include: { items: true },
   });
 }
 
@@ -80,6 +81,7 @@ export async function getTransactionById(id: string, dashboardId: string, userId
 
   return prisma.transaction.findFirst({
     where: { id, dashboardId, deletedAt: null },
+    include: { items: true },
   });
 }
 
@@ -87,12 +89,28 @@ export async function createTransaction(data: any, dashboardId: string, userId: 
   const { checkPermission } = await import('./paineisServico');
   await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
+  // Extract items from data if present
+  const { items, ...transactionData } = data;
+
   return prisma.transaction.create({
     data: {
-      ...data,
-      date: new Date(data.date),
+      ...transactionData,
+      date: new Date(transactionData.date),
       dashboardId,
+      userId,
+      // Create items if provided
+      ...(items && items.length > 0 && {
+        items: {
+          create: items.map((item: any) => ({
+            description: item.description,
+            quantity: item.quantity || 1,
+            unitPrice: item.unitPrice,
+            totalPrice: item.totalPrice,
+          })),
+        },
+      }),
     },
+    include: { items: true },
   });
 }
 
@@ -101,15 +119,29 @@ export async function createManyTransactions(dataArray: any[], dashboardId: stri
   await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
   const transactions = await Promise.all(
-    dataArray.map((data) =>
-      prisma.transaction.create({
+    dataArray.map((data) => {
+      const { items, ...transactionData } = data;
+      return prisma.transaction.create({
         data: {
-          ...data,
-          date: new Date(data.date),
+          ...transactionData,
+          date: new Date(transactionData.date),
           dashboardId,
+          userId,
+          // Create items if provided
+          ...(items && items.length > 0 && {
+            items: {
+              create: items.map((item: any) => ({
+                description: item.description,
+                quantity: item.quantity || 1,
+                unitPrice: item.unitPrice,
+                totalPrice: item.totalPrice,
+              })),
+            },
+          }),
         },
-      })
-    )
+        include: { items: true },
+      });
+    })
   );
   return transactions;
 }
@@ -119,17 +151,46 @@ export async function updateTransaction(id: string, data: any, dashboardId: stri
   await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
   try {
-    const updateData: any = { ...data };
+    // Extract items from data
+    const { items, ...updateData } = data;
+
     if (data.date) {
       updateData.date = new Date(data.date);
     }
-    await prisma.transaction.updateMany({
-      where: { id, dashboardId, deletedAt: null },
-      data: updateData,
-    });
 
-    return await prisma.transaction.findFirst({
-      where: { id, dashboardId },
+    // Update transaction and handle items in a transaction
+    return await prisma.$transaction(async (tx) => {
+      // Update the transaction itself
+      await tx.transaction.updateMany({
+        where: { id, dashboardId, deletedAt: null },
+        data: updateData,
+      });
+
+      // If items are provided, replace all existing items
+      if (items !== undefined) {
+        // Delete existing items
+        await tx.transactionItem.deleteMany({
+          where: { transactionId: id },
+        });
+
+        // Create new items if any
+        if (items && items.length > 0) {
+          await tx.transactionItem.createMany({
+            data: items.map((item: any) => ({
+              transactionId: id,
+              description: item.description,
+              quantity: item.quantity || 1,
+              unitPrice: item.unitPrice,
+              totalPrice: item.totalPrice,
+            })),
+          });
+        }
+      }
+
+      return await tx.transaction.findFirst({
+        where: { id, dashboardId },
+        include: { items: true },
+      });
     });
   } catch (error) {
     return null;

@@ -21,7 +21,7 @@ import {
 } from '@mui/material';
 import { Delete, ArrowForward } from '@mui/icons-material';
 import PageHeader from '../components/PageHeader';
-import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import { showSuccess, showError, showErrorWithRetry, showConfirm } from '../utils/notifications';
 import { useForm, Controller } from 'react-hook-form';
 import {
     useTransfers,
@@ -85,7 +85,7 @@ export default function TransfersPage() {
             showSuccess('Transferência realizada com sucesso!', { title: 'Sucesso', timer: 1500 });
         } catch (error) {
             console.error('Error creating transfer:', error);
-            showError(error, { title: 'Erro', text: 'Não foi possível realizar a transferência.' });
+            showErrorWithRetry(error, () => onSubmit(data));
         }
     };
 
@@ -105,7 +105,7 @@ export default function TransfersPage() {
                 await deleteTransfer.mutateAsync({ id, dashboardId: dashboardId || '' });
                 showSuccess('A transferência foi revertida.', { title: 'Revertido!' });
             } catch (error) {
-                showError(error, { title: 'Erro', text: 'Não foi possível reverter a transferência.' });
+                showErrorWithRetry(error, () => handleDelete(id));
             }
         }
     };

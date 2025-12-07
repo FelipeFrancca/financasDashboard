@@ -1,7 +1,7 @@
 import { Card, CardHeader, CardContent, TextField, Button, MenuItem, Grid, InputAdornment } from '@mui/material';
 import FlashOn from '@mui/icons-material/FlashOn';
 import { useForm, Controller } from 'react-hook-form';
-import { showError } from '../utils/notifications';
+import { showErrorWithRetry } from '../utils/notifications';
 
 interface QuickEntryFormProps {
   onSave: (data: any) => Promise<void>;
@@ -47,7 +47,7 @@ export default function QuickEntryForm({ onSave, onRefetch }: QuickEntryFormProp
       });
       onRefetch();
     } catch (error) {
-      showError(error, { title: 'Erro', text: 'Não foi possível salvar' });
+      showErrorWithRetry(error, () => onSubmit(data));
     }
   };
 

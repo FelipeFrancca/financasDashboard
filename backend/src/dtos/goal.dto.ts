@@ -9,6 +9,7 @@ import { GoalStatus } from '@prisma/client';
 // ============================================
 
 export const createGoalSchema = z.object({
+    dashboardId: z.string(),
     name: z.string()
         .min(3, 'Nome deve ter no mínimo 3 caracteres')
         .max(100, 'Nome deve ter no máximo 100 caracteres')
@@ -30,7 +31,7 @@ export const createGoalSchema = z.object({
         .optional(),
 
     category: z.string().optional(),
-});
+}).passthrough();
 
 export type CreateGoalDTO = z.infer<typeof createGoalSchema>;
 
@@ -39,6 +40,7 @@ export type CreateGoalDTO = z.infer<typeof createGoalSchema>;
 // ============================================
 
 export const updateGoalSchema = z.object({
+    dashboardId: z.string(),
     name: z.string().min(3).max(100).trim().optional(),
     description: z.string().max(500).optional().nullable(),
     targetAmount: z.number().positive().finite().optional(),
@@ -46,7 +48,7 @@ export const updateGoalSchema = z.object({
     deadline: z.coerce.date().optional().nullable(),
     category: z.string().optional().nullable(),
     status: z.nativeEnum(GoalStatus).optional(),
-});
+}).passthrough();
 
 export type UpdateGoalDTO = z.infer<typeof updateGoalSchema>;
 
@@ -57,6 +59,7 @@ export type UpdateGoalDTO = z.infer<typeof updateGoalSchema>;
 export const queryGoalsSchema = z.object({
     status: z.nativeEnum(GoalStatus).optional(),
     isCompleted: z.coerce.boolean().optional(),
+    dashboardId: z.string().min(1, 'Dashboard ID é obrigatório'),
 
     // Paginação
     page: z.coerce.number().int().positive().default(1),

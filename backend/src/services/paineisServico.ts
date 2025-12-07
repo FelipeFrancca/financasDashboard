@@ -90,8 +90,8 @@ export async function listDashboards(userId: string) {
   });
 
   // Combinar e formatar os resultados
-  const owned = ownedDashboards.map(d => ({ ...d, role: 'OWNER' as DashboardRole }));
-  const member = memberDashboards.map(m => ({ ...m.dashboard, role: m.role }));
+  const owned = ownedDashboards.map(d => ({ ...d, role: 'OWNER' as DashboardRole, isOwner: true }));
+  const member = memberDashboards.map(m => ({ ...m.dashboard, role: m.role, isOwner: false }));
 
   return [...owned, ...member];
 }
@@ -109,6 +109,63 @@ export async function createDashboard(userId: string, title: string, description
       members: true
     }
   });
+}
+
+// Atualizar dashboard
+export async function updateDashboard(userId: string, dashboardId: string, updates: { title?: string; description?: string }) {
+  await checkPermission(userId, dashboardId, ['OWNER']);
+
+  return prisma.dashboard.update({
+    where: { id: dashboardId },
+    data: updates,
+    include: {
+      owner: { select: { id: true, name: true, email: true, avatar: true } },
+      members: true
+    }
+  });
+}
+
+// Deletar dashboard
+export async function deleteDashboard(userId: string, dashboardId: string) {
+  await checkPermission(userId, dashboardId, ['OWNER']);
+
+  // Delete all related data in order
+  await prisma.$transaction(async (tx) => {
+    // Delete transactions
+    await tx.transaction.deleteMany({ where: { dashboardId } });
+
+    // Delete categories
+    await tx.category.deleteMany({ where: { dashboardId } });
+
+    // Delete accounts
+    await tx.account.deleteMany({ where: { dashboardId } });
+
+    // Delete goals
+    await tx.goal.deleteMany({ where: { dashboardId } });
+
+    // Delete budgets
+    await tx.budget.deleteMany({ where: { dashboardId } });
+
+    // Delete recurrences
+    await tx.recurrence.deleteMany({ where: { dashboardId } });
+
+    // Delete transfers
+    await tx.transfer.deleteMany({ where: { dashboardId } });
+
+    // Delete alerts
+    await tx.alert.deleteMany({ where: { dashboardId } });
+
+    // Delete invites
+    await tx.dashboardInvite.deleteMany({ where: { dashboardId } });
+
+    // Delete members
+    await tx.dashboardMember.deleteMany({ where: { dashboardId } });
+
+    // Finally delete the dashboard itself
+    await tx.dashboard.delete({ where: { id: dashboardId } });
+  });
+
+  return { success: true };
 }
 
 // Criar convite

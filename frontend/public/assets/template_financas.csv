@@ -1,0 +1,6 @@
+Data;Tipo;Fluxo;Categoria;Subcategoria;Descricao;Valor;MetodoPag;Fonte;Bandeira;ParcelasTotal;ParcelaAtual;StatusParcela;Observacao
+01/12/2024;Despesa;Variável;Alimentação;Restaurante;Almoço no trabalho;45,90;Cartão de Crédito;Nubank;Mastercard;1;1;Paga;
+02/12/2024;Receita;Fixa;Salário;;Salário mensal;5000,00;Transferência;Itaú;;;0;0;N/A;
+03/12/2024;Despesa;Variável;Transporte;Combustível;Gasolina carro;200,00;Pix;Bradesco;;;0;0;N/A;Posto Shell
+05/12/2024;Despesa;Fixa;Moradia;Aluguel;Aluguel apartamento;1500,00;Boleto;Santander;;;0;0;N/A;
+10/12/2024;Despesa;Variável;Lazer;Cinema;Ingresso cinema;35,00;Cartão de Débito;Nubank;Visa;0;0;N/A;Filme de ação

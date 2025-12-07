@@ -1,11 +1,18 @@
 /**
  * Serviço de Ingestão Financeira
  * Implementa pipeline híbrido: Regex (custo zero) + Google Gemini AI
+ * Inclui retry com exponential backoff para resiliência
  */
 
-
 import { aiConfig } from '../config/ai';
-import { InternalServerError, ValidationError } from '../utils/AppError';
+import {
+    InternalServerError,
+    ValidationError,
+    AIExtractionError,
+    AIServiceUnavailableError,
+    DocumentParseError,
+    AITimeoutError,
+} from '../utils/AppError';
 import { logger } from '../utils/logger';
 import type {
     ExtractionResult,
@@ -15,22 +22,43 @@ import type {
 } from '../types/ingestion.types';
 
 /**
+ * Códigos de erro do Gemini que são retryable
+ */
+const RETRYABLE_ERROR_CODES = [
+    'RESOURCE_EXHAUSTED',
+    'UNAVAILABLE',
+    'DEADLINE_EXCEEDED',
+    'INTERNAL',
+    'ECONNRESET',
+    'ETIMEDOUT',
+    'ENOTFOUND',
+    'EAI_AGAIN',
+];
+
+/**
  * Classe principal de serviço de ingestão
  */
 export class IngestionService {
     // Threshold de confiança para aceitar resultado do Regex
     private static readonly CONFIDENCE_THRESHOLD = 0.8;
 
+    // Configurações de retry
+    private static readonly MAX_RETRIES = 3;
+    private static readonly BASE_DELAY_MS = 1000;
+    private static readonly REQUEST_TIMEOUT_MS = 30000;
+
     /**
      * Processa um arquivo e extrai dados financeiros
      */
     async processFile(
         fileBuffer: Buffer,
-        mimeType: SupportedMimeType
+        mimeType: SupportedMimeType,
+        availableCategories: string[] = []
     ): Promise<ExtractionResult> {
         logger.info('Iniciando processamento de arquivo', 'IngestionService', {
             mimeType,
             sizeBytes: fileBuffer.length,
+            availableCategoriesCount: availableCategories.length,
         });
 
         try {
@@ -64,19 +92,147 @@ export class IngestionService {
 
             // Estratégia 2: Imagem OU PDF com baixa confiança -> IA
             if (!aiConfig.isAvailable()) {
-                throw new InternalServerError(
-                    'Serviço de IA não disponível e extração local falhou'
+                throw new AIServiceUnavailableError(
+                    'Serviço de IA não configurado. Configure a chave GOOGLE_AI_API_KEY.'
                 );
             }
 
-            const aiResult = await this.extractWithAI(fileBuffer, mimeType);
+            // Usa retry com exponential backoff
+            const aiResult = await this.extractWithAIRetry(fileBuffer, mimeType, availableCategories);
             return aiResult;
         } catch (error) {
             logger.error('Erro no processamento do arquivo', error, 'IngestionService');
-            throw error instanceof InternalServerError || error instanceof ValidationError
-                ? error
-                : new InternalServerError('Falha ao processar arquivo financeiro');
+
+            // Preserva erros já tipados
+            if (
+                error instanceof AIExtractionError ||
+                error instanceof AIServiceUnavailableError ||
+                error instanceof DocumentParseError ||
+                error instanceof AITimeoutError ||
+                error instanceof ValidationError
+            ) {
+                throw error;
+            }
+
+            // Erro genérico - transforma em erro mais amigável
+            throw new InternalServerError(
+                'Ocorreu um erro inesperado ao processar o documento. Tente novamente.',
+                { originalError: error instanceof Error ? error.message : String(error) }
+            );
         }
+    }
+
+    /**
+     * Extrai dados com IA usando retry e exponential backoff
+     */
+    private async extractWithAIRetry(
+        buffer: Buffer,
+        mimeType: SupportedMimeType,
+        availableCategories: string[]
+    ): Promise<ExtractionResult> {
+        let lastError: Error | null = null;
+
+        for (let attempt = 1; attempt <= IngestionService.MAX_RETRIES; attempt++) {
+            try {
+                logger.info(`Tentativa ${attempt}/${IngestionService.MAX_RETRIES} de extração via IA`, 'IngestionService');
+
+                const result = await this.extractWithAI(buffer, mimeType, availableCategories);
+
+                if (attempt > 1) {
+                    logger.info(`Extração bem-sucedida após ${attempt} tentativas`, 'IngestionService');
+                }
+
+                return result;
+            } catch (error) {
+                lastError = error instanceof Error ? error : new Error(String(error));
+
+                // Se não é um erro retryable, falha imediatamente
+                if (!this.isRetryableError(error)) {
+                    logger.warn(`Erro não-retryable na tentativa ${attempt}`, 'IngestionService', {
+                        error: lastError.message,
+                    });
+                    throw error;
+                }
+
+                // Última tentativa - não faz retry
+                if (attempt === IngestionService.MAX_RETRIES) {
+                    logger.error(
+                        `Todas as ${IngestionService.MAX_RETRIES} tentativas falharam`,
+                        lastError,
+                        'IngestionService'
+                    );
+                    break;
+                }
+
+                // Calcula delay com exponential backoff
+                const delay = IngestionService.BASE_DELAY_MS * Math.pow(2, attempt - 1);
+                logger.warn(
+                    `Tentativa ${attempt} falhou, aguardando ${delay}ms antes de retry`,
+                    'IngestionService',
+                    { error: lastError.message }
+                );
+
+                await this.sleep(delay);
+            }
+        }
+
+        // Todas as tentativas falharam - lança erro apropriado
+        throw new AIServiceUnavailableError(
+            'O serviço de análise está temporariamente sobrecarregado. Por favor, tente novamente em alguns minutos.'
+        );
+    }
+
+    /**
+     * Verifica se o erro é retryable
+     */
+    private isRetryableError(error: unknown): boolean {
+        if (!error || typeof error !== 'object') return false;
+
+        // Erros tipados NUNCA são retryable (já foram classificados)
+        if (
+            error instanceof AIExtractionError ||
+            error instanceof DocumentParseError ||
+            error instanceof AITimeoutError ||
+            error instanceof AIServiceUnavailableError // Já tratou rotação interna, não retry!
+        ) {
+            return false;
+        }
+
+        const err = error as any;
+
+        // Verifica código de erro
+        if (err.code && RETRYABLE_ERROR_CODES.includes(err.code)) {
+            return true;
+        }
+
+        // Verifica status HTTP
+        const status = err.status || err.statusCode;
+        if (status && [429, 500, 502, 503, 504].includes(status)) {
+            return true;
+        }
+
+        // Verifica mensagem de erro
+        const message = (err.message || '').toLowerCase();
+        if (
+            message.includes('timeout') ||
+            message.includes('rate limit') ||
+            message.includes('quota') ||
+            message.includes('overloaded') ||
+            message.includes('temporarily unavailable') ||
+            message.includes('econnreset') ||
+            message.includes('socket hang up')
+        ) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Sleep helper
+     */
+    private sleep(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     /**
@@ -84,9 +240,9 @@ export class IngestionService {
      */
     private async extractFromPDF(buffer: Buffer): Promise<RegexExtractionResult> {
         try {
-            // Dynamic import for CommonJS module
-            const pdfParseModule = await import('pdf-parse');
-            const pdfParse = pdfParseModule.default;
+            // Dynamic import for pdf-parse module
+            const pdfParseModule = await import('pdf-parse') as any;
+            const pdfParse = pdfParseModule.default || pdfParseModule;
             const data = await pdfParse(buffer);
             const text = data.text;
 
@@ -203,11 +359,21 @@ export class IngestionService {
     /**
      * Extrai dados usando Google Gemini AI (Vision/Multimodal)
      */
+    /**
+     * Extrai dados usando Google Gemini AI (Vision/Multimodal)
+     * Com suporte a rotação de chaves e modelos
+     */
     private async extractWithAI(
         buffer: Buffer,
-        mimeType: SupportedMimeType
+        mimeType: SupportedMimeType,
+        availableCategories: string[]
     ): Promise<ExtractionResult> {
-        try {
+        let attempts = 0;
+        const maxTotalAttempts = 15; // Limite de segurança para evitar loops infinitos
+
+        while (attempts < maxTotalAttempts) {
+            attempts++;
+            const currentConfig = aiConfig.getCurrentConfig();
             const model = aiConfig.getModel();
 
             // Prepara o conteúdo para o Gemini
@@ -219,50 +385,141 @@ export class IngestionService {
             };
 
             // Prompt otimizado para extração financeira
-            const prompt = this.buildFinancialExtractionPrompt();
+            const prompt = this.buildFinancialExtractionPrompt(availableCategories);
 
-            logger.info('Enviando para Google Gemini AI', 'IngestionService');
+            logger.info(
+                `Tentativa de IA (Key: ${currentConfig.keyIndex + 1}, Model: ${currentConfig.model})`,
+                'IngestionService'
+            );
 
-            const result = await model.generateContent([prompt, imagePart]);
-            const response = await result.response;
-            const text = response.text();
-            logger.debug('Resposta bruta do Gemini:', 'IngestionService', { text });
+            try {
+                // Cria promise com timeout
+                const resultPromise = model.generateContent([prompt, imagePart]);
+                const timeoutPromise = new Promise<never>((_, reject) => {
+                    setTimeout(() => reject(new AITimeoutError()), IngestionService.REQUEST_TIMEOUT_MS);
+                });
 
-            // Limpa o texto de blocos de código markdown (```json ... ```)
-            const cleanedText = text.replace(/```json\n?|\n?```/g, '').trim();
-            logger.debug('Texto limpo para parse:', 'IngestionService', { cleanedText });
+                const result = await Promise.race([resultPromise, timeoutPromise]);
+                const response = await result.response;
+                const text = response.text();
 
-            // Parse da resposta JSON
-            const data: GeminiFinancialData = JSON.parse(cleanedText);
-            logger.debug('Dados parseados do Gemini:', 'IngestionService', { data });
+                logger.debug('Resposta bruta do Gemini:', 'IngestionService', { text });
 
-            logger.info('Extração via IA concluída', 'IngestionService', {
-                merchant: data.merchant,
-                amount: data.amount,
+                // Parse do JSON com tratamento robusto
+                const data = this.parseGeminiResponse(text);
+
+                logger.info('Extração via IA concluída com sucesso', 'IngestionService', {
+                    merchant: data.merchant,
+                    amount: data.amount,
+                    category: data.category,
+                });
+
+                return {
+                    merchant: data.merchant,
+                    date: data.date,
+                    amount: data.amount ?? 0,
+                    category: data.category,
+                    items: data.items,
+                    confidence: 0.95, // Alta confiança para IA
+                    extractionMethod: 'ai',
+                };
+
+            } catch (error: any) {
+                logger.warn(
+                    `Falha na extração com Key ${currentConfig.keyIndex + 1} / Model ${currentConfig.model}`,
+                    'IngestionService',
+                    { error: error.message }
+                );
+
+                // Verifica se é erro de quota ou permissão
+                const isQuotaError = error.message?.includes('429') ||
+                    error.message?.includes('quota') ||
+                    error.message?.includes('limit') ||
+                    error.message?.includes('404') || // Modelo não encontrado
+                    error.message?.includes('503');   // Serviço indisponível
+
+                if (isQuotaError) {
+                    logger.warn('Erro de cota/limite detectado. Tentando rotacionar estratégia...', 'IngestionService');
+
+                    const rotated = aiConfig.rotateStrategy();
+                    if (rotated) {
+                        // Continua o loop com a nova configuração
+                        continue;
+                    } else {
+                        logger.error('Todas as estratégias de rotação falharam.', 'IngestionService');
+                        throw new AIServiceUnavailableError(
+                            'Todos os modelos e chaves de API estão esgotados ou indisponíveis no momento.'
+                        );
+                    }
+                }
+
+                // Se não for erro de cota, lança o erro original (pode ser erro de parse, timeout real, etc)
+                throw error;
+            }
+        }
+
+        throw new AIServiceUnavailableError('Limite máximo de tentativas de rotação atingido.');
+    }
+
+    /**
+     * Parse robusto da resposta do Gemini
+     */
+    private parseGeminiResponse(text: string): GeminiFinancialData {
+        // Remove blocos de código markdown
+        let cleanedText = text.replace(/```json\n?|\n?```/g, '').trim();
+
+        // Tenta encontrar JSON no texto se não começar com {
+        if (!cleanedText.startsWith('{')) {
+            const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                cleanedText = jsonMatch[0];
+            }
+        }
+
+        logger.debug('Texto limpo para parse:', 'IngestionService', { cleanedText });
+
+        try {
+            const data = JSON.parse(cleanedText) as GeminiFinancialData;
+
+            // Valida campos obrigatórios
+            if (typeof data.amount !== 'number' && data.amount !== null) {
+                // Tenta converter string para número
+                if (typeof data.amount === 'string') {
+                    const amountStr = data.amount as unknown as string;
+                    const parsed = parseFloat(amountStr.replace(/[^\d.,]/g, '').replace(',', '.'));
+                    if (!isNaN(parsed)) {
+                        data.amount = parsed;
+                    } else {
+                        data.amount = 0;
+                    }
+                } else {
+                    data.amount = 0;
+                }
+            }
+
+            return data;
+        } catch (parseError) {
+            logger.error('Erro ao fazer parse do JSON do Gemini', parseError, 'IngestionService', {
+                originalText: cleanedText.substring(0, 500),
             });
 
-            return {
-                merchant: data.merchant,
-                date: data.date,
-                amount: data.amount,
-                category: data.category,
-                items: data.items,
-                confidence: 0.95, // Alta confiança para IA
-                extractionMethod: 'ai',
-            };
-        } catch (error) {
-            logger.error('Erro na extração com IA', error, 'IngestionService');
-            throw new InternalServerError('Falha ao processar com Google AI', {
-                error: error instanceof Error ? error.message : 'Unknown error',
-            });
+            throw new DocumentParseError(
+                'Não foi possível interpretar a resposta da IA. O documento pode estar ilegível.',
+                { parseError: (parseError as Error).message }
+            );
         }
     }
 
     /**
      * Cria o prompt otimizado para o Gemini
      */
-    private buildFinancialExtractionPrompt(): string {
+    private buildFinancialExtractionPrompt(availableCategories: string[]): string {
+        const categoriesStr = availableCategories.length > 0
+            ? `\nCategorias disponíveis: ${availableCategories.join(', ')}`
+            : '';
+
         return `Você é um especialista em extração de dados financeiros de documentos brasileiros.
+${categoriesStr}
 
 Analise a imagem ou PDF e extraia as seguintes informações em formato JSON:
 
@@ -270,7 +527,7 @@ Analise a imagem ou PDF e extraia as seguintes informações em formato JSON:
   "merchant": "Nome do estabelecimento/comerciante",
   "date": "Data da transação no formato ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ)",
   "amount": Valor total como número decimal (ex: 1200.50),
-  "category": "Categoria da despesa (opcional)",
+  "category": "Categoria da despesa (escolha uma das disponíveis ou sugira uma nova se nenhuma se encaixar)",
   "items": [
     {
       "description": "Descrição do item",
@@ -288,6 +545,8 @@ REGRAS IMPORTANTES:
 4. Use apenas números para "amount", sem símbolos de moeda
 5. Se não encontrar algum campo, use null
 6. Retorne APENAS o JSON, sem texto adicional
+7. Se o documento estiver ilegível ou não for um documento financeiro, retorne: {"merchant": null, "date": null, "amount": 0, "category": null, "items": null}
+8. Para a categoria: Tente encaixar em uma das "Categorias disponíveis". Se não for possível, sugira uma categoria curta e descritiva (ex: "Alimentação", "Transporte", "Saúde").
 
 Extraia os dados agora:`;
     }

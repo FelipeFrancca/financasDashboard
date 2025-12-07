@@ -12,7 +12,7 @@ import {
 } from '@mui/material';
 import { Delete, CheckCircle, NotificationsActive } from '@mui/icons-material';
 import PageHeader from '../components/PageHeader';
-import { showSuccess, showError } from '../utils/notifications';
+import { showSuccess, showErrorWithRetry } from '../utils/notifications';
 import {
     useAlerts,
     useMarkAlertAsRead,
@@ -34,7 +34,7 @@ export default function AlertsPage() {
         try {
             await markAsRead.mutateAsync({ id, dashboardId: dashboardId || '' });
         } catch (error) {
-            showError(error, { title: 'Erro', text: 'Erro ao marcar alerta como lido' });
+            showErrorWithRetry(error, () => handleMarkAsRead(id));
         }
     };
 
@@ -43,7 +43,7 @@ export default function AlertsPage() {
             await deleteAlert.mutateAsync({ id, dashboardId: dashboardId || '' });
             showSuccess('Alerta excluído', { title: 'Sucesso', timer: 1500 });
         } catch (error) {
-            showError(error, { title: 'Erro', text: 'Erro ao excluir alerta' });
+            showErrorWithRetry(error, () => handleDelete(id));
         }
     };
 

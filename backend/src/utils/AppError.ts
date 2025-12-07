@@ -16,7 +16,7 @@ export class AppError extends Error {
     details?: any
   ) {
     super(message);
-    
+
     this.statusCode = statusCode;
     this.isOperational = isOperational;
     this.code = code;
@@ -92,3 +92,32 @@ export class DatabaseError extends AppError {
     super(message, 500, false, 'DATABASE_ERROR', details);
   }
 }
+
+/**
+ * Erros específicos para extração via IA
+ */
+
+export class AIExtractionError extends AppError {
+  constructor(message: string = 'Não foi possível extrair dados do documento', details?: any) {
+    super(message, 422, true, 'AI_EXTRACTION_ERROR', details);
+  }
+}
+
+export class AIServiceUnavailableError extends AppError {
+  constructor(message: string = 'Serviço de IA temporariamente indisponível. Tente novamente em alguns minutos.') {
+    super(message, 503, true, 'AI_SERVICE_UNAVAILABLE');
+  }
+}
+
+export class DocumentParseError extends AppError {
+  constructor(message: string = 'O documento não pôde ser lido', details?: any) {
+    super(message, 400, true, 'DOCUMENT_PARSE_ERROR', details);
+  }
+}
+
+export class AITimeoutError extends AppError {
+  constructor(message: string = 'A análise do documento demorou muito. Tente com uma imagem menor ou mais simples.') {
+    super(message, 504, true, 'AI_TIMEOUT');
+  }
+}
+

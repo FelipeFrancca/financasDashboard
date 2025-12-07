@@ -9,6 +9,7 @@ import { BudgetPeriod } from '@prisma/client';
 // ============================================
 
 export const createBudgetSchema = z.object({
+    dashboardId: z.string(),
     name: z.string()
         .min(3, 'Nome deve ter no mínimo 3 caracteres')
         .max(100, 'Nome deve ter no máximo 100 caracteres')
@@ -38,7 +39,7 @@ export const createBudgetSchema = z.object({
         .min(1, 'Alerta deve ser no mínimo 1%')
         .max(100, 'Alerta deve ser no máximo 100%')
         .optional(),
-}).refine(
+}).passthrough().refine(
     (data) => {
         if (data.endDate && data.startDate >= data.endDate) {
             return false;
@@ -58,6 +59,7 @@ export type CreateBudgetDTO = z.infer<typeof createBudgetSchema>;
 // ============================================
 
 export const updateBudgetSchema = z.object({
+    dashboardId: z.string(),
     name: z.string().min(3).max(100).trim().optional(),
     amount: z.number().positive().finite().max(999999999).optional(),
     period: z.nativeEnum(BudgetPeriod).optional(),
@@ -65,7 +67,7 @@ export const updateBudgetSchema = z.object({
     endDate: z.coerce.date().optional().nullable(),
     alertAt: z.number().min(1).max(100).optional().nullable(),
     isActive: z.boolean().optional(),
-});
+}).passthrough();
 
 export type UpdateBudgetDTO = z.infer<typeof updateBudgetSchema>;
 
@@ -78,6 +80,7 @@ export const queryBudgetsSchema = z.object({
     category: z.string().optional(),
     isActive: z.coerce.boolean().optional(),
     includeDeleted: z.coerce.boolean().default(false),
+    dashboardId: z.string().min(1, 'Dashboard ID é obrigatório'),
 
     // Paginação
     page: z.coerce.number().int().positive().default(1),

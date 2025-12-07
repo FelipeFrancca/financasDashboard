@@ -3,6 +3,7 @@ import { prisma } from '../database/conexao';
 import { logger } from '../utils/logger';
 import emailServico from './emailServico';
 import { getNotificationPreferences } from './notificationPreferencesServico';
+import * as pushNotificationServico from './pushNotificationServico';
 
 export async function createAlert(
     dashboardId: string,
@@ -30,13 +31,16 @@ export async function createAlert(
     // Enviar notificação por email se habilitado
     await sendEmailNotification(alert, userId);
 
+    // Enviar push notification se habilitado
+    await sendPushNotification(alert, userId);
+
     return alert;
 }
 
 async function sendEmailNotification(alert: Alert, userId: string) {
     try {
         const preferences = await getNotificationPreferences(userId);
-        
+
         // Verificar se notificações por email estão habilitadas
         if (!preferences.emailEnabled) {
             return;
@@ -76,6 +80,31 @@ async function sendEmailNotification(alert: Alert, userId: string) {
         }
     } catch (error) {
         logger.error('Erro ao enviar notificação por email:', error);
+        // Não propagar o erro para não afetar a criação do alerta
+    }
+}
+
+async function sendPushNotification(alert: Alert, userId: string) {
+    try {
+        const metadata = alert.metadata as any;
+
+        if (alert.type === 'BUDGET_ALERT') {
+            await pushNotificationServico.sendBudgetAlertPush(userId, {
+                categoria: metadata?.categoria || 'Categoria',
+                percentual: metadata?.percentual || 0,
+                limite: metadata?.limite || 0,
+                gasto: metadata?.gasto || 0,
+            });
+        } else if (alert.type === 'GOAL_MILESTONE') {
+            await pushNotificationServico.sendGoalMilestonePush(userId, {
+                meta: metadata?.meta || 'Meta',
+                percentual: metadata?.percentual || 0,
+                valorAtual: metadata?.valorAtual || 0,
+                valorAlvo: metadata?.valorAlvo || 0,
+            });
+        }
+    } catch (error) {
+        logger.error('Erro ao enviar push notification:', error);
         // Não propagar o erro para não afetar a criação do alerta
     }
 }

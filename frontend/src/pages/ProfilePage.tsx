@@ -27,6 +27,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/api';
 import PageHeader from '../components/PageHeader';
 import UserAvatar from '../components/UserAvatar';
+import PushNotificationToggle from '../components/PushNotificationToggle';
 import { useNotificationPreferences, useUpdateNotificationPreferences } from '../hooks/api/useNotificationPreferences';
 
 interface TabPanelProps {
@@ -264,6 +265,11 @@ export default function ProfilePage() {
             <Typography variant="body2" color="text.secondary" paragraph>
               Configure como e quando você deseja receber notificações
             </Typography>
+
+            {/* Push Notifications Toggle */}
+            <Box sx={{ mb: 3 }}>
+              <PushNotificationToggle />
+            </Box>
 
             <Grid container spacing={3}>
               <Grid item xs={12} md={6}>

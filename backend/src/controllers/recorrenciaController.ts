@@ -37,3 +37,8 @@ export const deletarRecorrente = async (req: AuthRequest, res: Response) => {
     await recorrenciaServico.deleteRecurring(req.params.id, dashboardId, req.user!.userId);
     res.status(204).send();
 };
+
+export const processarRecorrencias = async (req: Request, res: Response) => {
+    await recorrenciaServico.processDueTransactions();
+    res.json({ success: true, message: 'Recorrências processadas com sucesso' });
+};

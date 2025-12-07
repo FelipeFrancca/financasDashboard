@@ -3,6 +3,7 @@ import * as categoriasServico from '../services/categoriasServico';
 import { AuthRequest } from '../middleware/auth';
 
 export const criarCategoria = async (req: AuthRequest, res: Response) => {
+    console.log('Criar Categoria Body:', req.body);
     const { dashboardId } = req.body;
     if (!dashboardId) {
         return res.status(400).json({ success: false, error: 'dashboardId é obrigatório' });

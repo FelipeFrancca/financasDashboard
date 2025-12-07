@@ -29,7 +29,7 @@ import {
   Warning as WarningIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
-import { showError, showWarning } from "../utils/notifications";
+import { showWarning, showErrorWithRetry } from "../utils/notifications";
 import { Logo } from "../components/Logo";
 
 interface TabPanelProps {
@@ -168,8 +168,9 @@ export default function LoginPage() {
   useEffect(() => {
     const googleError = searchParams.get("error");
     if (googleError === "google_auth_failed") {
-      showError(
+      showErrorWithRetry(
         "Falha na autenticação com Google. Verifique se as credenciais OAuth estão configuradas corretamente no arquivo .env do backend.",
+        handleGoogleLogin,
         { title: "Erro de Autenticação" }
       );
     }
@@ -238,7 +239,7 @@ export default function LoginPage() {
       await register(data.email, data.password, data.name);
       navigate(from, { replace: true });
     } catch (err: any) {
-      showError(err, { title: "Erro ao Criar Conta" });
+      showErrorWithRetry(err, () => onRegisterSubmit(data), { title: "Erro ao Criar Conta" });
     } finally {
       setIsLoading(false);
     }

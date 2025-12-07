@@ -42,6 +42,7 @@ model User {
   createdAt               DateTime                 @default(now())
   updatedAt               DateTime                 @updatedAt
   NotificationPreferences NotificationPreferences?
+  PushSubscriptions       PushSubscription[]
 
   @@index([email])
   @@index([googleId])
@@ -87,6 +88,9 @@ model Transaction {
   dashboardId String
   dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
 
+  // Itens da transação (para cupons fiscais com múltiplos produtos)
+  items TransactionItem[]
+
   // Soft delete
   deletedAt DateTime?
   deletedBy String?
@@ -108,6 +112,27 @@ model Transaction {
   @@map("transactions")
 }
 
+// ============================================
+// TRANSACTION ITEM MODEL - Itens de transação
+// ============================================
+
+model TransactionItem {
+  id          String  @id @default(cuid())
+  description String
+  quantity    Float   @default(1)
+  unitPrice   Float?
+  totalPrice  Float
+
+  // Relacionamento com Transaction
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([transactionId])
+  @@map("transaction_items")
+}
+
 enum DashboardRole {
   VIEWER
   EDITOR
@@ -123,6 +148,7 @@ model Dashboard {
   members     DashboardMember[]
   invites     DashboardInvite[]
   transactions Transaction[]
+  recurringTransactions RecurringTransaction[]
   alerts      Alert[]
 
   createdAt DateTime @default(now())
@@ -204,6 +230,10 @@ model Account {
   color       String? // Cor para exibição
   icon        String? // Ícone para exibição
   description String? // Descrição adicional
+
+  // Cartão de Crédito
+  closingDay  Int?    // Dia de fechamento da fatura
+  dueDay      Int?    // Dia de vencimento da fatura
 
   // Relacionamentos
   userId       String
@@ -465,6 +495,9 @@ model RecurringTransaction {
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  dashboardId String
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
   // Auditoria
   deletedAt DateTime?
 
@@ -472,6 +505,7 @@ model RecurringTransaction {
   updatedAt DateTime @updatedAt
 
   @@index([userId, isActive])
+  @@index([dashboardId])
   @@index([userId, nextDate])
   @@index([nextDate, isActive])
   @@index([deletedAt])
@@ -548,3 +582,17 @@ model NotificationPreferences {
   @@map("notification_preferences")
 }
 
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  endpoint  String   @unique
+  p256dh    String   // Public key for encryption
+  auth      String   // Auth secret for encryption
+  userAgent String?  // Device/browser info
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}

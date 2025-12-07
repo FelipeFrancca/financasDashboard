@@ -19,6 +19,8 @@ import alertasRotas from "./routes/alertasRotas";
 import recorrenciaRotas from "./routes/recorrenciaRotas";
 import notificationPreferencesRotas from "./routes/notificationPreferencesRotas";
 import ingestionRotas from "./routes/ingestionRotas";
+import itemsRotas from "./routes/itemsRotas";
+import pushNotificationRotas from "./routes/pushNotificationRotas";
 
 // Middlewares e Utils
 import { logger } from "./utils/logger";
@@ -32,6 +34,7 @@ import { generalLimiter } from "./middleware/rateLimiter";
 import { openApiConfig } from "./config/openapi";
 import { auditMiddleware } from "./middleware/audit";
 
+// Force restart
 const app: Application = express();
 const PORT = process.env.PORT || 3001;
 
@@ -123,10 +126,12 @@ app.use("/api/transfers", transferenciasRotas);
 app.use("/api/budgets", orcamentosRotas);
 app.use("/api/categories", categoriasRotas);
 app.use("/api/goals", metasRotas);
-app.use("/api/alerts", alertasRotas);
-app.use("/api/recurrences", recorrenciaRotas);
-app.use("/api/notification-preferences", notificationPreferencesRotas);
 app.use("/api/ingestion", ingestionRotas);
+app.use("/api/recurrences", recorrenciaRotas);
+app.use("/api/alerts", alertasRotas);
+app.use("/api/dashboards", itemsRotas); // Adicionando rota de itens (merge com paineisRotas)
+app.use("/api/notification-preferences", notificationPreferencesRotas);
+app.use("/api/push", pushNotificationRotas);
 
 // Health check
 app.get("/health", async (_req, res) => {

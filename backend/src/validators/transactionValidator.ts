@@ -20,6 +20,18 @@ const flowTypes = ['Fixa', 'Variável'] as const;
 const installmentStatuses = ['N/A', 'Paga', 'Pendente'] as const;
 
 /**
+ * Schema de item de transação (para cupons fiscais com múltiplos produtos)
+ */
+export const transactionItemSchema = z.object({
+    description: z.string().min(1, 'Descrição do item é obrigatória').max(500, 'Descrição muito longa'),
+    quantity: z.number().positive('Quantidade deve ser positiva').default(1),
+    unitPrice: z.number().nonnegative('Preço unitário não pode ser negativo').optional(),
+    totalPrice: z.number().nonnegative('Preço total não pode ser negativo'),
+});
+
+export type TransactionItemInput = z.infer<typeof transactionItemSchema>;
+
+/**
  * Schema de criação de transação
  */
 export const createTransactionSchema = z.object({
@@ -58,6 +70,7 @@ export const createTransactionSchema = z.object({
     thirdPartyName: z.string().max(100, 'Nome do terceiro muito longo').optional(),
     thirdPartyDescription: z.string().max(500, 'Descrição do terceiro muito longa').optional(),
     dashboardId: z.string().optional(), // Para associar a um dashboard específico
+    items: z.array(transactionItemSchema).optional(), // Itens extraídos de cupons fiscais
 });
 
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>;

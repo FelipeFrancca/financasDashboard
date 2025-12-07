@@ -16,8 +16,11 @@ export const useCreateCategory = () => {
     return useMutation({
         mutationFn: ({ data, dashboardId }: { data: any; dashboardId: string }) =>
             categoryService.create(data, dashboardId),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['categories'] });
+        onSuccess: (newCategory, variables) => {
+            queryClient.setQueryData(['categories', variables.dashboardId], (oldData: any[] | undefined) => {
+                if (!oldData) return [newCategory];
+                return [...oldData, newCategory];
+            });
         },
     });
 };
@@ -28,8 +31,13 @@ export const useUpdateCategory = () => {
     return useMutation({
         mutationFn: ({ id, data, dashboardId }: { id: string; data: any; dashboardId: string }) =>
             categoryService.update(id, data, dashboardId),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['categories'] });
+        onSuccess: (updatedCategory, variables) => {
+            queryClient.setQueryData(['categories', variables.dashboardId], (oldData: any[] | undefined) => {
+                if (!oldData) return oldData;
+                return oldData.map((category) =>
+                    category.id === updatedCategory.id ? updatedCategory : category
+                );
+            });
         },
     });
 };
@@ -40,8 +48,11 @@ export const useDeleteCategory = () => {
     return useMutation({
         mutationFn: ({ id, dashboardId }: { id: string; dashboardId: string }) =>
             categoryService.delete(id, dashboardId),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['categories'] });
+        onSuccess: (_, variables) => {
+            queryClient.setQueryData(['categories', variables.dashboardId], (oldData: any[] | undefined) => {
+                if (!oldData) return oldData;
+                return oldData.filter((category) => category.id !== variables.id);
+            });
         },
     });
 };

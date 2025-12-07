@@ -47,7 +47,6 @@ import {
     People,
     TrendingUp,
     Person,
-    CloudUpload,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -120,7 +119,6 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                     { text: 'Contas', icon: <AccountBalanceWallet />, path: `${basePath}/accounts` },
                     { text: 'Categorias', icon: <Category />, path: `${basePath}/categories` },
                     { text: 'Transferências', icon: <CompareArrows />, path: `${basePath}/transfers` },
-                    { text: 'Importar Documentos', icon: <CloudUpload />, path: `${basePath}/ingestion` },
                 ],
             },
             {

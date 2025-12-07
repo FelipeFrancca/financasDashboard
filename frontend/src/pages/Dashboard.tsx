@@ -34,7 +34,7 @@ import QuickEntryForm from '../components/QuickEntryForm';
 import FileUpload from '../components/FileUpload';
 import ShortcutsModal from '../components/ShortcutsModal';
 import { Logo } from '../components/Logo';
-import { showSuccess, showError, showConfirm, showWarning } from '../utils/notifications';
+import { showSuccess, showErrorWithRetry, showConfirm, showWarning } from '../utils/notifications';
 
 interface DashboardProps {
   mode: 'light' | 'dark';
@@ -132,11 +132,14 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
 
     if (result.isConfirmed) {
       try {
-        await transactionService.delete(id);
-        refetch();
-        showSuccess('Transação removida com sucesso.', { title: 'Excluído!', timer: 2000 });
+        const transaction = transactions.find((t: Transaction) => t.id === id);
+        if (transaction) {
+          await transactionService.delete(id, transaction.dashboardId);
+          refetch();
+          showSuccess('Transação removida com sucesso.', { title: 'Excluído!', timer: 2000 });
+        }
       } catch (error) {
-        showError(error, { title: 'Erro', text: 'Não foi possível excluir a transação.' });
+        showErrorWithRetry(error, () => handleDeleteTransaction(id));
       }
     }
   };
@@ -153,7 +156,7 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
       refetch();
       setShowTransactionForm(false);
     } catch (error) {
-      showError(error, { title: 'Erro', text: 'Não foi possível salvar a transação.' });
+      showErrorWithRetry(error, () => handleSaveTransaction(data));
     }
   };
 
@@ -163,7 +166,7 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
       refetch();
       showSuccess(`${result.count} transações importadas com sucesso.`, { title: 'Importado!', timer: 3000 });
     } catch (error) {
-      showError(error, { title: 'Erro', text: 'Não foi possível importar as transações.' });
+      showErrorWithRetry(error, () => handleImport(importedTransactions));
     }
   };
 

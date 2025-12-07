@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import ContentCopy from '@mui/icons-material/ContentCopy';
 import { dashboardService } from '../services/api';
-import { showSuccess, showError } from '../utils/notifications';
+import { showSuccess, showErrorWithRetry } from '../utils/notifications';
 import { useForm, Controller } from 'react-hook-form';
 
 interface ShareDialogProps {
@@ -56,7 +56,7 @@ export default function ShareDialog({ open, onClose, dashboardId, dashboardTitle
       });
       setShareLink(result.shareLink);
     } catch (error: any) {
-      showError(error, { title: 'Erro', text: 'Erro ao gerar link de compartilhamento' });
+      showErrorWithRetry(error, () => handleGenerate(data));
     } finally {
       setLoading(false);
     }

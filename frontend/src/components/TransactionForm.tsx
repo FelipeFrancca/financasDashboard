@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -17,8 +17,10 @@ import {
 } from '@mui/material';
 import Person from '@mui/icons-material/Person';
 import { useForm, Controller } from 'react-hook-form';
+import { useParams } from 'react-router-dom';
 import { useCategories } from '../hooks/api/useCategories';
-import type { Transaction } from '../types';
+import TransactionItemsEditor from './TransactionItemsEditor';
+import type { Transaction, TransactionItem } from '../types';
 
 interface TransactionFormProps {
   open: boolean;
@@ -69,10 +71,6 @@ const defaultValues: TransactionFormData = {
   thirdPartyDescription: '',
 };
 
-import { useParams } from 'react-router-dom';
-
-// ... imports
-
 export default function TransactionForm({ open, transaction, onClose, onSave }: TransactionFormProps) {
   const { dashboardId } = useParams<{ dashboardId: string }>();
   const { data: categories = [] } = useCategories(dashboardId || '');
@@ -83,6 +81,9 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
 
   const entryType = watch('entryType');
   const isThirdParty = watch('isThirdParty');
+  
+  // State for editable items
+  const [editableItems, setEditableItems] = useState<TransactionItem[]>([]);
 
   // Filter categories based on entry type
   const filteredCategories = categories.filter((cat: any) => {
@@ -93,16 +94,38 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
   useEffect(() => {
     if (open) {
       if (transaction) {
+        // Sanitize null values to empty strings to prevent React controlled input warnings
         reset({
-          ...transaction,
           date: new Date(transaction.date).toISOString().split('T')[0],
+          entryType: transaction.entryType as 'Receita' | 'Despesa',
+          flowType: transaction.flowType as 'Fixa' | 'Variável',
+          category: transaction.category || '',
+          subcategory: transaction.subcategory || '',
+          description: transaction.description || '',
           amount: transaction.amount,
+          paymentMethod: transaction.paymentMethod || '',
+          institution: transaction.institution || '',
+          cardBrand: transaction.cardBrand || '',
+          installmentTotal: transaction.installmentTotal || 1,
+          installmentNumber: transaction.installmentNumber || 1,
+          installmentStatus: transaction.installmentStatus as 'N/A' | 'Paga' | 'Pendente' || 'N/A',
+          notes: transaction.notes || '',
+          isTemporary: transaction.isTemporary || false,
           isThirdParty: transaction.isThirdParty || false,
           thirdPartyName: transaction.thirdPartyName || '',
           thirdPartyDescription: transaction.thirdPartyDescription || '',
         });
+        // Initialize editable items
+        setEditableItems(transaction.items?.map(item => ({
+          id: item.id,
+          description: item.description,
+          quantity: item.quantity || 1,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+        })) || []);
       } else {
         reset(defaultValues);
+        setEditableItems([]);
       }
     }
   }, [open, transaction, reset]);
@@ -113,6 +136,8 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
       amount: Number(data.amount),
       installmentTotal: Number(data.installmentTotal),
       installmentNumber: Number(data.installmentNumber),
+      // Include edited items
+      items: editableItems.length > 0 ? editableItems : undefined,
     });
     onClose();
   };
@@ -306,75 +331,51 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
               </>
             )}
 
-            {/* Linha 7: Notas e Temporário */}
+            {/* Linha 7: Notas */}
             <Grid item xs={12}>
               <Controller
                 name="notes"
                 control={control}
                 render={({ field }) => (
-                  <TextField {...field} fullWidth multiline rows={2} label="Observações" />
-                )}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Controller
-                name="isTemporary"
-                control={control}
-                render={({ field }) => (
-                  <FormControlLabel
-                    control={<Switch checked={field.value} onChange={field.onChange} />}
-                    label="Transação Temporária"
-                  />
+                  <TextField {...field} fullWidth multiline rows={3} label="Notas (Opcional)" />
                 )}
               />
             </Grid>
 
-            {/* Linha 8: Compra de Terceiro */}
+            {/* Linha 8: Despesa de Terceiro */}
             <Grid item xs={12}>
-              <Box sx={{
-                p: 2,
-                border: '1px solid',
-                borderColor: 'divider',
-                borderRadius: 2,
-                bgcolor: 'action.hover'
-              }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: isThirdParty ? 2 : 0 }}>
-                  <Person color="action" sx={{ mr: 1 }} />
-                  <Controller
-                    name="isThirdParty"
-                    control={control}
-                    render={({ field }) => (
-                      <FormControlLabel
-                        control={<Switch checked={field.value} onChange={field.onChange} />}
-                        label={
-                          <Typography fontWeight={500}>
-                            Compra de Terceiro?
-                          </Typography>
-                        }
-                        sx={{ m: 0 }}
-                      />
-                    )}
-                  />
-                </Box>
-
+              <Box sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 2 }}>
+                <FormControlLabel
+                  control={
+                    <Controller
+                      name="isThirdParty"
+                      control={control}
+                      render={({ field }) => (
+                        <Switch {...field} checked={field.value} />
+                      )}
+                    />
+                  }
+                  label={
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Person sx={{ color: 'primary.main' }} />
+                      <Typography variant="body1">
+                        Despesa de Terceiro
+                      </Typography>
+                    </Box>
+                  }
+                />
                 <Collapse in={isThirdParty}>
-                  <Grid container spacing={2}>
+                  <Grid container spacing={2} sx={{ mt: 1 }}>
                     <Grid item xs={12} sm={6}>
                       <Controller
                         name="thirdPartyName"
                         control={control}
                         render={({ field }) => (
-                          <TextField
-                            {...field}
-                            fullWidth
-                            label="Nome do Terceiro"
-                            size="small"
-                            placeholder="Ex: João Silva"
-                          />
+                          <TextField {...field} fullWidth label="Nome do Terceiro" />
                         )}
                       />
                     </Grid>
-                    <Grid item xs={12}>
+                    <Grid item xs={12} sm={6}>
                       <Controller
                         name="thirdPartyDescription"
                         control={control}
@@ -382,11 +383,8 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
                           <TextField
                             {...field}
                             fullWidth
-                            multiline
-                            rows={2}
-                            label="Descrição Detalhada (Opcional)"
-                            placeholder="Detalhes sobre a compra e o acordo..."
-                            size="small"
+                            label="Anotação"
+                            placeholder="Ex: Empréstimo para João"
                           />
                         )}
                       />
@@ -394,6 +392,15 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
                   </Grid>
                 </Collapse>
               </Box>
+            </Grid>
+
+            {/* Itens da transação (editável) */}
+            <Grid item xs={12}>
+              <TransactionItemsEditor 
+                items={editableItems} 
+                onChange={setEditableItems}
+                defaultExpanded={editableItems.length > 0}
+              />
             </Grid>
           </Grid>
         </DialogContent>

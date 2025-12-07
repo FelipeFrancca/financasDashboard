@@ -1,0 +1,299 @@
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import {
+    Container,
+    Card,
+    CardContent,
+    CardHeader,
+    Button,
+    TextField,
+    Box,
+    Typography,
+    Divider,
+    Alert,
+    CircularProgress,
+} from '@mui/material';
+import {
+    Settings,
+    Save,
+    Delete,
+    Warning,
+} from '@mui/icons-material';
+import PageHeader from '../components/PageHeader';
+import { showSuccess, showErrorWithRetry, showConfirm } from '../utils/notifications';
+import { useForm, Controller } from 'react-hook-form';
+import {
+    useUpdateDashboard,
+    useDeleteDashboard,
+} from '../hooks/api/useDashboardMembers';
+import { useDashboards } from '../hooks/api/useDashboards';
+import { fadeIn } from '../utils/animations';
+
+interface DashboardSettingsFormData {
+    title: string;
+    description: string;
+}
+
+export default function DashboardSettingsPage() {
+    const { dashboardId } = useParams<{ dashboardId: string }>();
+    const navigate = useNavigate();
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    // Hooks
+    const { data: dashboards = [], isLoading } = useDashboards();
+    const updateDashboard = useUpdateDashboard();
+    const deleteDashboard = useDeleteDashboard();
+
+    // Find current dashboard
+    const currentDashboard = dashboards.find((d: any) => d.id === dashboardId);
+
+    const { control, handleSubmit, reset, formState: { isDirty, isSubmitting } } = useForm<DashboardSettingsFormData>({
+        defaultValues: {
+            title: '',
+            description: '',
+        }
+    });
+
+    // Reset form when dashboard data is loaded
+    useEffect(() => {
+        if (currentDashboard) {
+            reset({
+                title: currentDashboard.title || '',
+                description: currentDashboard.description || '',
+            });
+        }
+    }, [currentDashboard, reset]);
+
+    const onSubmit = async (data: DashboardSettingsFormData) => {
+        try {
+            await updateDashboard.mutateAsync({
+                id: dashboardId || '',
+                updates: data,
+            });
+            showSuccess('Configurações salvas com sucesso!', { title: 'Salvo!' });
+        } catch (error) {
+            showErrorWithRetry(error, () => onSubmit(data));
+        }
+    };
+
+    const handleDeleteDashboard = async () => {
+        const result = await showConfirm(
+            'Esta ação é irreversível. Todos os dados do dashboard serão permanentemente excluídos, incluindo transações, categorias, contas e membros.',
+            {
+                title: 'Excluir Dashboard?',
+                icon: 'warning',
+                confirmButtonText: 'Sim, quero excluir',
+                cancelButtonText: 'Cancelar',
+            }
+        );
+
+        if (result.isConfirmed) {
+            const confirmResult = await showConfirm(
+                `Tem certeza ABSOLUTA que deseja excluir "${currentDashboard?.title}"? Esta é a última confirmação.`,
+                {
+                    title: '⚠️ Confirmação Final',
+                    icon: 'warning',
+                    confirmButtonText: 'Sim, excluir permanentemente',
+                    cancelButtonText: 'Não, cancelar',
+                }
+            );
+
+            if (confirmResult.isConfirmed) {
+                setIsDeleting(true);
+                try {
+                    await deleteDashboard.mutateAsync(dashboardId || '');
+                    showSuccess('Dashboard excluído com sucesso.', { title: 'Excluído!' });
+                    navigate('/dashboards');
+                } catch (error) {
+                    showErrorWithRetry(error, () => handleDeleteDashboard());
+                } finally {
+                    setIsDeleting(false);
+                }
+            }
+        }
+    };
+
+    if (isLoading) {
+        return (
+            <Container maxWidth="md" sx={{ py: 4 }}>
+                <PageHeader
+                    title="Configurações"
+                    breadcrumbs={[
+                        { label: 'Dashboards', to: '/dashboards' },
+                        { label: 'Configurações' }
+                    ]}
+                />
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+                    <CircularProgress />
+                </Box>
+            </Container>
+        );
+    }
+
+    if (!currentDashboard) {
+        return (
+            <Container maxWidth="md" sx={{ py: 4 }}>
+                <PageHeader
+                    title="Configurações"
+                    breadcrumbs={[
+                        { label: 'Dashboards', to: '/dashboards' },
+                        { label: 'Configurações' }
+                    ]}
+                />
+                <Alert severity="error">
+                    Dashboard não encontrado.
+                </Alert>
+            </Container>
+        );
+    }
+
+    const isOwner = currentDashboard.role === 'OWNER';
+
+    return (
+        <Container maxWidth="md" sx={{ py: 4 }}>
+            <PageHeader
+                title="Configurações"
+                breadcrumbs={[
+                    { label: 'Dashboards', to: '/dashboards' },
+                    { label: currentDashboard.title, to: `/dashboard/${dashboardId}` },
+                    { label: 'Configurações' }
+                ]}
+            />
+
+            {/* General Settings */}
+            <Card sx={{ mb: 4, ...fadeIn }}>
+                <CardHeader
+                    avatar={<Settings color="primary" />}
+                    title="Configurações Gerais"
+                    titleTypographyProps={{ variant: 'h6', fontWeight: 600 }}
+                    subheader="Informações básicas do dashboard"
+                />
+                <CardContent>
+                    <form onSubmit={handleSubmit(onSubmit)}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                            <Controller
+                                name="title"
+                                control={control}
+                                rules={{ required: 'Título é obrigatório' }}
+                                render={({ field, fieldState: { error } }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Nome do Dashboard"
+                                        fullWidth
+                                        error={!!error}
+                                        helperText={error?.message}
+                                        disabled={!isOwner}
+                                    />
+                                )}
+                            />
+
+                            <Controller
+                                name="description"
+                                control={control}
+                                render={({ field }) => (
+                                    <TextField
+                                        {...field}
+                                        label="Descrição"
+                                        fullWidth
+                                        multiline
+                                        rows={3}
+                                        placeholder="Descreva o propósito deste dashboard..."
+                                        disabled={!isOwner}
+                                    />
+                                )}
+                            />
+
+                            {isOwner && (
+                                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                    <Button
+                                        type="submit"
+                                        variant="contained"
+                                        startIcon={<Save />}
+                                        disabled={!isDirty || isSubmitting}
+                                    >
+                                        {isSubmitting ? 'Salvando...' : 'Salvar Alterações'}
+                                    </Button>
+                                </Box>
+                            )}
+
+                            {!isOwner && (
+                                <Alert severity="info">
+                                    Apenas o proprietário do dashboard pode editar as configurações.
+                                </Alert>
+                            )}
+                        </Box>
+                    </form>
+                </CardContent>
+            </Card>
+
+            {/* Dashboard Info */}
+            <Card sx={{ mb: 4, ...fadeIn }}>
+                <CardHeader
+                    title="Informações do Dashboard"
+                    titleTypographyProps={{ variant: 'h6', fontWeight: 600 }}
+                />
+                <CardContent>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="body2" color="text.secondary">ID do Dashboard</Typography>
+                            <Typography variant="body2" fontFamily="monospace">{dashboardId}</Typography>
+                        </Box>
+                        <Divider />
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="body2" color="text.secondary">Sua permissão</Typography>
+                            <Typography variant="body2" fontWeight={600}>
+                                {currentDashboard.role === 'OWNER' ? 'Proprietário' :
+                                 currentDashboard.role === 'EDITOR' ? 'Editor' : 'Visualizador'}
+                            </Typography>
+                        </Box>
+                        <Divider />
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="body2" color="text.secondary">Criado em</Typography>
+                            <Typography variant="body2">
+                                {currentDashboard.createdAt
+                                    ? new Date(currentDashboard.createdAt).toLocaleDateString('pt-BR')
+                                    : 'N/A'}
+                            </Typography>
+                        </Box>
+                    </Box>
+                </CardContent>
+            </Card>
+
+            {/* Danger Zone - Only for owners */}
+            {isOwner && (
+                <Card sx={{ border: 2, borderColor: 'error.main', ...fadeIn }}>
+                    <CardHeader
+                        avatar={<Warning color="error" />}
+                        title="Zona de Perigo"
+                        titleTypographyProps={{ variant: 'h6', fontWeight: 600, color: 'error.main' }}
+                        subheader="Ações irreversíveis"
+                    />
+                    <CardContent>
+                        <Alert severity="warning" sx={{ mb: 3 }}>
+                            <Typography variant="body2">
+                                A exclusão do dashboard é permanente e não pode ser desfeita.
+                                Todos os dados associados serão perdidos, incluindo:
+                            </Typography>
+                            <ul style={{ margin: '8px 0', paddingLeft: '20px' }}>
+                                <li>Todas as transações</li>
+                                <li>Categorias e contas</li>
+                                <li>Metas e orçamentos</li>
+                                <li>Membros e convites</li>
+                            </ul>
+                        </Alert>
+
+                        <Button
+                            variant="contained"
+                            color="error"
+                            startIcon={<Delete />}
+                            onClick={handleDeleteDashboard}
+                            disabled={isDeleting}
+                        >
+                            {isDeleting ? 'Excluindo...' : 'Excluir Dashboard Permanentemente'}
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
+        </Container>
+    );
+}

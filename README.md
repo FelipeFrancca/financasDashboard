@@ -54,7 +54,14 @@
 - Recuperação de senha por email
 - Segurança com JWT e Refresh Tokens
 
-### 4. 🎨 Interface e UX
+### 4. 🔔 Notificações Push
+- **Notificações nativas** do navegador/dispositivo
+- Alertas de orçamento em tempo real
+- Marcos de metas financeiras
+- Atividade de dashboards compartilhados
+- Configurável por preferências do usuário
+
+### 5. 🎨 Interface e UX
 - Design moderno com Material-UI
 - Temas Claro/Escuro
 - Responsivo (Mobile-first)
@@ -111,6 +118,22 @@ DATABASE_URL="postgresql://postgres:SUA_SENHA@localhost:5432/financas_dashboard"
 JWT_SECRET="gere_uma_chave_segura"
 JWT_REFRESH_SECRET="gere_outra_chave_segura"
 ```
+
+**Configurar Push Notifications (opcional):**
+
+Para habilitar notificações push nativas, gere as chaves VAPID:
+```bash
+npx web-push generate-vapid-keys
+```
+
+Adicione as chaves geradas ao `.env`:
+```env
+VAPID_PUBLIC_KEY=sua_chave_publica_gerada
+VAPID_PRIVATE_KEY=sua_chave_privada_gerada
+VAPID_SUBJECT=mailto:seu-email@exemplo.com
+```
+
+> ⚠️ **Importante**: Uma vez configuradas, NÃO altere as chaves VAPID ou as subscriptions existentes deixarão de funcionar.
 
 **Configurar Banco de Dados:**
 ```bash

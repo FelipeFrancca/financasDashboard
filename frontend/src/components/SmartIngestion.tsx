@@ -9,14 +9,9 @@ import {
   CircularProgress,
   Alert,
   Paper,
-  List,
-  ListItem,
-  ListItemText,
   Divider,
   Chip,
   Stack,
-  IconButton,
-  Collapse,
   Fade,
   LinearProgress,
 } from '@mui/material';
@@ -26,8 +21,6 @@ import {
   Image,
   CheckCircle,
   AutoAwesome,
-  ExpandMore,
-  ExpandLess,
   Delete,
   Save,
   Refresh,
@@ -35,11 +28,13 @@ import {
 } from '@mui/icons-material';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ingestionService, transactionService } from '../services/api';
-import { showError, showSuccess } from '../utils/notifications';
+import { showErrorWithRetry, showSuccess } from '../utils/notifications';
+import TransactionItemsEditor from './TransactionItemsEditor';
+import EditableField from './EditableField';
 
 interface ExtractedItem {
   description: string;
-  quantity?: number;
+  quantity: number;
   unitPrice?: number;
   totalPrice: number;
 }
@@ -61,7 +56,7 @@ export default function SmartIngestion() {
   const [saving, setSaving] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [result, setResult] = useState<ExtractionResult | null>(null);
-  const [showItems, setShowItems] = useState(false);
+  const [editableItems, setEditableItems] = useState<ExtractedItem[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -99,9 +94,17 @@ export default function SmartIngestion() {
     try {
       const data = await ingestionService.upload(file);
       setResult(data);
+      // Initialize editable items from extraction result
+      setEditableItems(data.items?.map((item: ExtractedItem) => ({
+        description: item.description,
+        quantity: item.quantity || 1,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice,
+      })) || []);
       showSuccess('Documento processado com sucesso!');
-    } catch (error) {
-      showError(error, { title: 'Erro', text: 'Falha ao processar documento.' });
+    } catch (error: any) {
+      // Usa showErrorWithRetry que humaniza automaticamente e oferece retry
+      showErrorWithRetry(error, handleUpload);
     } finally {
       setLoading(false);
     }
@@ -124,12 +127,19 @@ export default function SmartIngestion() {
         installmentStatus: 'Paga' as const,
         isTemporary: false,
         dashboardId,
+        items: editableItems.length > 0 ? editableItems.map(item => ({
+          description: item.description,
+          quantity: item.quantity || 1,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+        })) : undefined,
       };
       await transactionService.create(transactionData);
-      showSuccess('Transação salva com sucesso!');
+      showSuccess(`Transação salva com sucesso!${editableItems.length ? ` (${editableItems.length} itens)` : ''}`);
       navigate(`/dashboard/${dashboardId}`);
-    } catch (error) {
-      showError(error, { title: 'Erro', text: 'Falha ao salvar transação.' });
+    } catch (error: any) {
+      // Usa showErrorWithRetry que humaniza automaticamente e oferece retry
+      showErrorWithRetry(error, handleSaveTransaction);
     } finally {
       setSaving(false);
     }
@@ -138,6 +148,7 @@ export default function SmartIngestion() {
   const handleClear = () => {
     setFile(null);
     setResult(null);
+    setEditableItems([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -155,6 +166,14 @@ export default function SmartIngestion() {
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
 
+  const handleUpdateResult = (field: keyof ExtractionResult, value: any) => {
+    if (!result) return;
+    setResult({
+      ...result,
+      [field]: value,
+    });
+  };
+
   return (
     <Card elevation={3}>
       <CardHeader
@@ -170,66 +189,60 @@ export default function SmartIngestion() {
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
+              onClick={() => fileInputRef.current?.click()}
               sx={{
                 border: '3px dashed',
                 borderColor: dragActive ? 'primary.main' : 'divider',
                 borderRadius: 3,
-                p: 5,
+                p: 6,
                 textAlign: 'center',
                 cursor: 'pointer',
-                bgcolor: dragActive ? 'action.hover' : 'background.default',
+                bgcolor: dragActive ? 'action.hover' : 'background.paper',
                 transition: 'all 0.3s ease',
                 '&:hover': {
                   bgcolor: 'action.hover',
-                  borderColor: 'primary.main',
-                  transform: 'scale(1.01)',
+                  borderColor: 'primary.light',
                 },
               }}
-              onClick={() => fileInputRef.current?.click()}
             >
               <input
-                ref={fileInputRef}
                 type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
                 accept=".pdf,.jpg,.jpeg,.png"
                 style={{ display: 'none' }}
-                onChange={handleFileSelect}
               />
-              
               {file ? (
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-                  {file.type === 'application/pdf' ? (
-                    <Description sx={{ fontSize: 64, color: 'error.main' }} />
-                  ) : (
-                    <Image sx={{ fontSize: 64, color: 'primary.main' }} />
-                  )}
-                  <Typography variant="h6" fontWeight="medium">{file.name}</Typography>
-                  <Chip 
-                    label={`${(file.size / 1024 / 1024).toFixed(2)} MB`} 
-                    size="small"
-                    color="default"
-                  />
-                  <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                    {file.type === 'application/pdf' ? (
+                      <Description sx={{ fontSize: 48, color: 'error.main' }} />
+                    ) : (
+                      <Image sx={{ fontSize: 48, color: 'primary.main' }} />
+                    )}
+                    <Box textAlign="left">
+                      <Typography variant="h6" fontWeight="600">{file.name}</Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {(file.size / 1024 / 1024).toFixed(2)} MB
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Stack direction="row" spacing={2}>
                     <Button
                       variant="contained"
-                      size="large"
+                      color="primary"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleUpload();
                       }}
                       disabled={loading}
-                      startIcon={loading ? <CircularProgress size={20} /> : <AutoAwesome />}
-                      sx={{ 
-                        px: 4, 
-                        py: 1.5, 
-                        fontWeight: 600,
-                        boxShadow: 3,
-                      }}
+                      startIcon={loading ? <CircularProgress size={18} /> : <CloudUpload />}
+                      sx={{ px: 4, py: 1.5, fontWeight: 600 }}
                     >
-                      {loading ? 'Processando...' : 'Extrair Dados'}
+                      {loading ? 'Analisando...' : 'Analisar Documento'}
                     </Button>
                     <Button
                       variant="outlined"
-                      size="large"
                       color="error"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -290,9 +303,11 @@ export default function SmartIngestion() {
                     <Typography variant="overline" color="text.secondary" fontWeight="600">
                       Estabelecimento
                     </Typography>
-                    <Typography variant="h4" fontWeight="bold">
-                      {result.merchant || 'Estabelecimento não identificado'}
-                    </Typography>
+                    <EditableField
+                      value={result.merchant || 'Estabelecimento não identificado'}
+                      onSave={(val) => handleUpdateResult('merchant', val)}
+                      typographyProps={{ variant: 'h4', fontWeight: 'bold' }}
+                    />
                   </Box>
                   <Chip 
                     label={result.extractionMethod === 'ai' ? '🤖 IA Generativa' : '⚡ Regex Local'} 
@@ -307,17 +322,25 @@ export default function SmartIngestion() {
                     <Typography variant="overline" color="text.secondary" fontWeight="600">
                       📅 Data
                     </Typography>
-                    <Typography variant="h6" fontWeight="medium">
-                      {formatDate(result.date)}
-                    </Typography>
+                    <EditableField
+                      value={result.date ? result.date.split('T')[0] : ''}
+                      onSave={(val) => handleUpdateResult('date', new Date(val).toISOString())}
+                      type="date"
+                      format={(val) => formatDate(val)}
+                      typographyProps={{ variant: 'h6', fontWeight: 'medium' }}
+                    />
                   </Box>
                   <Box flex={1}>
                     <Typography variant="overline" color="text.secondary" fontWeight="600">
                       💰 Valor Total
                     </Typography>
-                    <Typography variant="h5" color="primary.main" fontWeight="bold">
-                      {formatCurrency(result.amount)}
-                    </Typography>
+                    <EditableField
+                      value={result.amount}
+                      onSave={(val) => handleUpdateResult('amount', parseFloat(val))}
+                      type="number"
+                      format={(val) => formatCurrency(val)}
+                      typographyProps={{ variant: 'h5', color: 'primary.main', fontWeight: 'bold' }}
+                    />
                   </Box>
                   <Box flex={1}>
                     <Typography variant="overline" color="text.secondary" fontWeight="600">
@@ -349,47 +372,14 @@ export default function SmartIngestion() {
                   </Box>
                 )}
 
-                {result.items && result.items.length > 0 && (
+                {editableItems.length > 0 && (
                   <>
                     <Divider sx={{ my: 3 }} />
-                    <Box 
-                      sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', mb: 2 }}
-                      onClick={() => setShowItems(!showItems)}
-                    >
-                      <Typography variant="subtitle1" fontWeight="600" sx={{ flexGrow: 1 }}>
-                        📋 Itens Extraídos ({result.items.length})
-                      </Typography>
-                      <IconButton size="small">
-                        {showItems ? <ExpandLess /> : <ExpandMore />}
-                      </IconButton>
-                    </Box>
-                    
-                    <Collapse in={showItems}>
-                      <List dense disablePadding>
-                        {result.items.map((item, index) => (
-                          <ListItem 
-                            key={index} 
-                            divider={index < (result.items?.length || 0) - 1}
-                            sx={{ 
-                              py: 1.5,
-                              '&:hover': { bgcolor: 'action.hover' }
-                            }}
-                          >
-                            <ListItemText
-                              primary={item.description}
-                              secondary={
-                                item.quantity && item.unitPrice 
-                                  ? `${item.quantity}x ${formatCurrency(item.unitPrice)}`
-                                  : null
-                              }
-                            />
-                            <Typography variant="body1" fontWeight="bold">
-                              {formatCurrency(item.totalPrice)}
-                            </Typography>
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Collapse>
+                    <TransactionItemsEditor
+                      items={editableItems}
+                      onChange={setEditableItems}
+                      defaultExpanded
+                    />
                   </>
                 )}
 

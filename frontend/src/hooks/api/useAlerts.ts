@@ -14,8 +14,13 @@ export function useMarkAlertAsRead() {
     return useMutation({
         mutationFn: ({ id, dashboardId }: { id: string; dashboardId: string }) =>
             alertService.markAsRead(id, dashboardId),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['alerts'] });
+        onSuccess: (_, variables) => {
+            queryClient.setQueryData(['alerts', variables.dashboardId], (oldData: any[] | undefined) => {
+                if (!oldData) return oldData;
+                return oldData.map((alert) =>
+                    alert.id === variables.id ? { ...alert, isRead: true } : alert
+                );
+            });
         },
     });
 }
@@ -25,8 +30,11 @@ export function useDeleteAlert() {
     return useMutation({
         mutationFn: ({ id, dashboardId }: { id: string; dashboardId: string }) =>
             alertService.delete(id, dashboardId),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['alerts'] });
+        onSuccess: (_, variables) => {
+            queryClient.setQueryData(['alerts', variables.dashboardId], (oldData: any[] | undefined) => {
+                if (!oldData) return oldData;
+                return oldData.filter((alert) => alert.id !== variables.id);
+            });
         },
     });
 }

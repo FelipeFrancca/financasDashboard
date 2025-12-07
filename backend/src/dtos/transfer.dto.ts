@@ -10,36 +10,25 @@ import { z } from 'zod';
 // ============================================
 
 export const createTransferSchema = z.object({
-    fromAccountId: z.string()
-        .min(1, 'Conta de origem é obrigatória')
-        .cuid('ID de conta de origem inválido'),
-
-    toAccountId: z.string()
-        .min(1, 'Conta de destino é obrigatória')
-        .cuid('ID de conta de destino inválido'),
-
+    dashboardId: z.string(),
     amount: z.number()
         .positive('Valor deve ser positivo')
-        .finite('Valor inválido')
-        .refine(val => val > 0.01, 'Valor mínimo é R$ 0.01'),
+        .finite('Valor inválido'),
 
     date: z.coerce.date()
         .default(() => new Date()),
 
     description: z.string()
-        .min(3, 'Descrição deve ter no mínimo 3 caracteres')
-        .max(200, 'Descrição deve ter no máximo 200 caracteres')
-        .trim()
-        .default('Transferência entre contas'),
-
-    notes: z.string()
-        .max(500, 'Notas muito longas')
+        .max(100, 'Descrição muito longa')
         .trim()
         .optional(),
-}).refine(
+
+    fromAccountId: z.string().cuid('Conta de origem inválida'),
+    toAccountId: z.string().cuid('Conta de destino inválida'),
+}).passthrough().refine(
     (data) => data.fromAccountId !== data.toAccountId,
     {
-        message: 'Conta de origem e destino não podem ser iguais',
+        message: 'Conta de origem e destino devem ser diferentes',
         path: ['toAccountId'],
     }
 );
@@ -47,43 +36,16 @@ export const createTransferSchema = z.object({
 export type CreateTransferDTO = z.infer<typeof createTransferSchema>;
 
 // ============================================
-// TRANSFER RESPONSE DTO
-// ============================================
-
-export interface TransferResponseDTO {
-    id: string;
-    fromAccountId: string;
-    toAccountId: string;
-    amount: number;
-    date: Date;
-    description: string;
-    notes: string | null;
-    fromTransaction: {
-        id: string;
-        accountId: string;
-        amount: number;
-        entryType: string;
-    };
-    toTransaction: {
-        id: string;
-        accountId: string;
-        amount: number;
-        entryType: string;
-    };
-    createdAt: Date;
-}
-
-// ============================================
 // QUERY TRANSFERS DTO
 // ============================================
 
 export const queryTransfersSchema = z.object({
-    fromAccountId: z.string().cuid().optional(),
-    toAccountId: z.string().cuid().optional(),
-    startDate: z.coerce.date().optional(),
-    endDate: z.coerce.date().optional(),
-    minAmount: z.coerce.number().positive().optional(),
-    maxAmount: z.coerce.number().positive().optional(),
+    dashboardId: z.string().cuid(), // Required for multi-dashboard support
+    startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    accountId: z.string().cuid().optional(),
+    minAmount: z.coerce.number().optional(),
+    maxAmount: z.coerce.number().optional(),
 
     // Paginação
     page: z.coerce.number().int().positive().default(1),

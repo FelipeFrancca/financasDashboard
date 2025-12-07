@@ -50,10 +50,70 @@ const errorMessages: Record<string, string> = {
     'FORBIDDEN': 'Você não tem permissão para acessar este recurso',
     'INTERNAL_SERVER_ERROR': 'Erro no servidor. Tente novamente mais tarde',
     'SERVICE_UNAVAILABLE': 'Serviço temporariamente indisponível',
+
+    // Erros de IA/Ingestão de documentos
+    'AI_EXTRACTION_ERROR': 'Não foi possível extrair dados do documento. Tente uma imagem mais nítida ou um PDF de melhor qualidade.',
+    'AI_SERVICE_UNAVAILABLE': 'Serviço de análise de documentos temporariamente indisponível. Tente novamente em alguns minutos.',
+    'DOCUMENT_PARSE_ERROR': 'O documento não pôde ser lido corretamente. Verifique se o arquivo não está corrompido.',
+    'AI_TIMEOUT': 'A análise do documento demorou muito. Tente com uma imagem menor ou mais simples.',
 };
 
 /**
- * Extrai mensagem de erro de um AxiosError
+ * Mapeia status HTTP para mensagens humanizadas
+ */
+const httpStatusMessages: Record<number, { title: string; message: string }> = {
+    400: {
+        title: 'Dados Inválidos',
+        message: 'Algumas informações não estão corretas. Verifique os campos e tente novamente.'
+    },
+    401: {
+        title: 'Sessão Expirada',
+        message: 'Sua sessão terminou. Por favor, faça login novamente para continuar.'
+    },
+    403: {
+        title: 'Acesso Negado',
+        message: 'Você não tem permissão para realizar esta ação.'
+    },
+    404: {
+        title: 'Não Encontrado',
+        message: 'O recurso que você procura não foi encontrado.'
+    },
+    408: {
+        title: 'Tempo Esgotado',
+        message: 'A operação demorou mais do que o esperado. Tente novamente.'
+    },
+    409: {
+        title: 'Conflito',
+        message: 'Este item já existe ou está em uso.'
+    },
+    422: {
+        title: 'Dados Inválidos',
+        message: 'Verifique os dados informados e tente novamente.'
+    },
+    429: {
+        title: 'Muitas Tentativas',
+        message: 'Você fez muitas tentativas. Aguarde um momento e tente novamente.'
+    },
+    500: {
+        title: 'Erro no Servidor',
+        message: 'Algo deu errado do nosso lado. Nossa equipe foi notificada.'
+    },
+    502: {
+        title: 'Servidor Indisponível',
+        message: 'O servidor está temporariamente fora do ar. Tente em alguns minutos.'
+    },
+    503: {
+        title: 'Serviço Indisponível',
+        message: 'O serviço está em manutenção. Tente novamente em alguns minutos.'
+    },
+    504: {
+        title: 'Servidor Ocupado',
+        message: 'O servidor está demorando para responder. Tente novamente em alguns instantes.'
+    },
+};
+
+/**
+ * Extrai mensagem humanizada de um erro
  */
 export function extractErrorMessage(error: any): string {
     // Se já é uma string, retorna
@@ -66,12 +126,12 @@ export function extractErrorMessage(error: any): string {
         // Erro de rede
         if (!axiosError.response) {
             if (axiosError.code === 'ERR_NETWORK') {
-                return errorMessages.NETWORK_ERROR;
+                return 'Não foi possível conectar ao servidor. Verifique sua conexão com a internet.';
             }
             if (axiosError.code === 'ECONNABORTED') {
-                return errorMessages.TIMEOUT_ERROR;
+                return 'A operação demorou muito. Verifique sua conexão e tente novamente.';
             }
-            return 'Erro de conexão com o servidor';
+            return 'Erro de conexão com o servidor. Verifique sua internet.';
         }
 
         // Erro da API
@@ -94,59 +154,67 @@ export function extractErrorMessage(error: any): string {
                 }
             }
 
-            // Verifica se tem message direto
-            if (errorObj.message) {
-                return errorObj.message;
+            // Verifica se tem message direto (mas não mostre se parece técnico)
+            if (errorObj.message && !errorObj.message.includes('status code')) {
+                // Não mostra mensagens que pareçam códigos técnicos
+                const technicalPatterns = [/status code \d+/, /Error:/, /\d{3}$/, /undefined/i];
+                const isTechnical = technicalPatterns.some(p => p.test(errorObj.message));
+                if (!isTechnical) {
+                    return errorObj.message;
+                }
             }
 
-            // Verifica se tem code
+            // Verifica se tem code mapeado
             if (errorObj.code && errorMessages[errorObj.code]) {
                 return errorMessages[errorObj.code];
             }
-
-            // Verifica se tem details com array de erros (validação Zod)
-            if (errorObj.details && Array.isArray(errorObj.details)) {
-                const errors = errorObj.details.map((d: any) => {
-                    if (d.field && d.message) {
-                        return `${d.field}: ${d.message}`;
-                    }
-                    return d.message || JSON.stringify(d);
-                });
-                return errors.join('\n');
-            }
         }
 
-        // Mensagens padrão por status code
+        // Mensagem humanizada por status code
         const status = axiosError.response.status;
-        switch (status) {
-            case 400:
-                return 'Dados inválidos. Verifique as informações enviadas';
-            case 401:
-                return 'Não autorizado. Faça login novamente';
-            case 403:
-                return errorMessages.FORBIDDEN;
-            case 404:
-                return errorMessages.NOT_FOUND;
-            case 409:
-                return 'Conflito. Este recurso já existe';
-            case 422:
-                return 'Erro de validação. Verifique os dados';
-            case 500:
-                return errorMessages.INTERNAL_SERVER_ERROR;
-            case 503:
-                return errorMessages.SERVICE_UNAVAILABLE;
-            default:
-                return `Erro no servidor (${status})`;
+        const statusMessage = httpStatusMessages[status];
+        if (statusMessage) {
+            return statusMessage.message;
         }
+
+        // Fallback genérico (sem mostrar código)
+        return 'Ocorreu um erro inesperado. Tente novamente.';
     }
 
     // Se tem uma mensagem de erro
     if (error.message) {
+        // Filtra mensagens técnicas
+        if (error.message.includes('status code') ||
+            error.message.includes('Error:') ||
+            /^\d{3}$/.test(error.message)) {
+            return 'Ocorreu um erro inesperado. Tente novamente.';
+        }
         return error.message;
     }
 
     // Fallback
-    return 'Ocorreu um erro inesperado';
+    return 'Ocorreu um erro inesperado. Tente novamente.';
+}
+
+/**
+ * Extrai título humanizado de um erro
+ */
+export function extractErrorTitle(error: any): string {
+    if (error.isAxiosError || error.response) {
+        const axiosError = error as AxiosError<ApiError>;
+
+        if (!axiosError.response) {
+            return 'Erro de Conexão';
+        }
+
+        const status = axiosError.response.status;
+        const statusMessage = httpStatusMessages[status];
+        if (statusMessage) {
+            return statusMessage.title;
+        }
+    }
+
+    return 'Algo deu errado';
 }
 
 /**
@@ -181,18 +249,51 @@ export function showSuccess(message: string, options: NotificationOptions = {}) 
 }
 
 /**
- * Exibe notificação de erro
+ * Exibe notificação de erro com título humanizado
  */
 export function showError(error: any, options: NotificationOptions = {}) {
-    const message = extractErrorMessage(error);
+    const message = options.text || extractErrorMessage(error);
+    const title = options.title || extractErrorTitle(error);
 
     return MySwal.fire({
         icon: 'error',
-        title: options.title || 'Erro',
+        title,
         text: message,
         confirmButtonText: options.confirmButtonText || 'OK',
+        confirmButtonColor: '#6366f1',
         ...options,
     });
+}
+
+/**
+ * Exibe notificação de erro com botão de tentar novamente
+ */
+export async function showErrorWithRetry(
+    error: any,
+    onRetry: () => void | Promise<void>,
+    options: NotificationOptions = {}
+): Promise<boolean> {
+    const message = options.text || extractErrorMessage(error);
+    const title = options.title || extractErrorTitle(error);
+
+    const result = await MySwal.fire({
+        icon: 'error',
+        title,
+        text: message,
+        showCancelButton: true,
+        confirmButtonText: '🔄 Tentar Novamente',
+        cancelButtonText: 'Fechar',
+        confirmButtonColor: '#6366f1',
+        cancelButtonColor: '#64748b',
+        reverseButtons: true,
+        ...options,
+    });
+
+    if (result.isConfirmed) {
+        await onRetry();
+        return true;
+    }
+    return false;
 }
 
 /**

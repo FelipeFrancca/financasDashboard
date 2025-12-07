@@ -25,8 +25,11 @@ export const useCreateTransaction = () => {
 
     return useMutation({
         mutationFn: transactionService.create,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['transactions'] });
+        onSuccess: (newTransaction) => {
+            queryClient.setQueriesData({ queryKey: ['transactions'] }, (oldData: Transaction[] | undefined) => {
+                if (!oldData) return [newTransaction];
+                return [newTransaction, ...oldData];
+            });
             queryClient.invalidateQueries({ queryKey: ['stats'] });
         },
     });
@@ -38,8 +41,11 @@ export const useUpdateTransaction = () => {
     return useMutation({
         mutationFn: ({ id, data }: { id: string; data: Partial<Transaction> }) =>
             transactionService.update(id, data),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['transactions'] });
+        onSuccess: (updatedTransaction) => {
+            queryClient.setQueriesData({ queryKey: ['transactions'] }, (oldData: Transaction[] | undefined) => {
+                if (!oldData) return oldData;
+                return oldData.map((t) => (t.id === updatedTransaction.id ? updatedTransaction : t));
+            });
             queryClient.invalidateQueries({ queryKey: ['stats'] });
         },
     });
@@ -49,9 +55,13 @@ export const useDeleteTransaction = () => {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: transactionService.delete,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ['transactions'] });
+        mutationFn: ({ id, dashboardId }: { id: string; dashboardId: string }) =>
+            transactionService.delete(id, dashboardId),
+        onSuccess: (_, variables) => {
+            queryClient.setQueriesData({ queryKey: ['transactions'] }, (oldData: Transaction[] | undefined) => {
+                if (!oldData) return oldData;
+                return oldData.filter((t) => t.id !== variables.id);
+            });
             queryClient.invalidateQueries({ queryKey: ['stats'] });
         },
     });

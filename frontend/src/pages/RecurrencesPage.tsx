@@ -22,7 +22,7 @@ import {
 } from '@mui/material';
 import { Edit, Delete } from '@mui/icons-material';
 import PageHeader from '../components/PageHeader';
-import { showSuccess, showError, showConfirm } from '../utils/notifications';
+import { showSuccess, showErrorWithRetry, showConfirm } from '../utils/notifications';
 import { useForm, Controller } from 'react-hook-form';
 import {
     useRecurrences,
@@ -31,6 +31,7 @@ import {
     useDeleteRecurrence
 } from '../hooks/api/useRecurrences';
 import { useCategories } from '../hooks/api/useCategories';
+import { useDashboardPermissions } from '../hooks/api/useDashboardPermissions';
 
 interface RecurrenceFormData {
     description: string;
@@ -62,6 +63,7 @@ export default function RecurrencesPage() {
     // Hooks
     const { data: recurrences = [] } = useRecurrences(dashboardId || '');
     const { data: categories = [] } = useCategories(dashboardId || '');
+    const { canEdit } = useDashboardPermissions();
     const createRecurrence = useCreateRecurrence();
     const updateRecurrence = useUpdateRecurrence();
     const deleteRecurrence = useDeleteRecurrence();
@@ -124,7 +126,7 @@ export default function RecurrencesPage() {
             showSuccess(`Recorrência ${editingRecurrence ? 'atualizada' : 'criada'} com sucesso!`, { title: 'Sucesso', timer: 1500 });
         } catch (error) {
             console.error('Error saving recurrence:', error);
-            showError(error, { title: 'Erro', text: 'Não foi possível salvar a recorrência.' });
+            showErrorWithRetry(error, () => onSubmit(data));
         }
     };
 
@@ -144,7 +146,7 @@ export default function RecurrencesPage() {
                 await deleteRecurrence.mutateAsync({ id, dashboardId: dashboardId || '' });
                 showSuccess('A recorrência foi excluída.', { title: 'Excluído!' });
             } catch (error) {
-                showError(error, { title: 'Erro', text: 'Não foi possível excluir a recorrência.' });
+                showErrorWithRetry(error, () => handleDelete(id));
             }
         }
     };
@@ -162,8 +164,8 @@ export default function RecurrencesPage() {
                     { label: 'Dashboards', to: '/dashboards' },
                     { label: 'Recorrências' }
                 ]}
-                actionLabel="Nova Recorrência"
-                onAction={() => handleOpen()}
+                actionLabel={canEdit ? "Nova Recorrência" : undefined}
+                onAction={canEdit ? () => handleOpen() : undefined}
             />
 
             <Card>
@@ -205,19 +207,26 @@ export default function RecurrencesPage() {
                                             {recurrence.nextDate ? new Date(recurrence.nextDate).toLocaleDateString('pt-BR') : '-'}
                                         </TableCell>
                                         <TableCell align="center">
-                                            <IconButton onClick={() => handleOpen(recurrence)} color="primary">
-                                                <Edit />
-                                            </IconButton>
-                                            <IconButton onClick={() => handleDelete(recurrence.id)} color="error">
-                                                <Delete />
-                                            </IconButton>
+                                            {canEdit && (
+                                                <>
+                                                    <IconButton onClick={() => handleOpen(recurrence)} color="primary">
+                                                        <Edit />
+                                                    </IconButton>
+                                                    <IconButton onClick={() => handleDelete(recurrence.id)} color="error">
+                                                        <Delete />
+                                                    </IconButton>
+                                                </>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ))}
                                 {recurrences.length === 0 && (
                                     <TableRow>
                                         <TableCell colSpan={7} align="center">
-                                            Nenhuma recorrência cadastrada.
+                                            {canEdit 
+                                                ? "Nenhuma recorrência cadastrada."
+                                                : "Nenhuma recorrência foi cadastrada neste dashboard ainda."
+                                            }
                                         </TableCell>
                                     </TableRow>
                                 )}

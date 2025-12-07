@@ -339,7 +339,7 @@ export default function LandingPage() {
                                     >
                                         <Box
                                             component="img"
-                                            src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80"
+                                            src="/dashboard-preview.png"
                                             alt="Dashboard Preview"
                                             sx={{ width: '100%', height: 'auto', display: 'block' }}
                                         />
