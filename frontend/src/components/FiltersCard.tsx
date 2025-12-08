@@ -25,6 +25,8 @@ import {
   CalendarMonth,
   ChevronLeft,
   ChevronRight,
+  Event,
+  InfoOutlined,
 } from '@mui/icons-material';
 import { fadeIn } from '../utils/animations';
 import type { TransactionFilters, Transaction, Account } from '../types';
@@ -46,7 +48,7 @@ interface FiltersCardProps {
 export default function FiltersCard({ filters, onFiltersChange, transactions, accounts = [], categories: apiCategories = [] }: FiltersCardProps) {
   const theme = useTheme();
   const [expandedAccordion, setExpandedAccordion] = useState<boolean>(false);
-  
+
   // Estado para mês e ano selecionados
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth());
@@ -64,11 +66,19 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
     setSelectedYear(now.getFullYear());
   };
 
+  // Handler para mudança do campo de filtro de data
+  const handleDateFilterFieldChange = (newValue: 'date' | 'dueDate') => {
+    onFiltersChange({
+      ...filters,
+      dateFilterField: newValue,
+    });
+  };
+
   // Função para aplicar filtro de mês
   const applyMonthFilter = (month: number, year: number) => {
     const startDate = new Date(year, month, 1);
     const endDate = new Date(year, month + 1, 0); // Último dia do mês
-    
+
     onFiltersChange({
       ...filters,
       startDate: startDate.toISOString().split('T')[0],
@@ -114,12 +124,12 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
 
   const applyBillingCycle = () => {
     if (!filters.accountId) return;
-    
+
     const account = accounts.find(a => a.id === filters.accountId);
     if (!account || account.type !== 'CREDIT_CARD' || !account.closingDay || !account.dueDay) return;
 
     const currentDay = now.getDate();
-    
+
     let targetMonth = now.getMonth();
     let targetYear = now.getFullYear();
 
@@ -147,10 +157,10 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
   const showBillingCycleOption = selectedAccount?.type === 'CREDIT_CARD' && selectedAccount?.closingDay;
 
   // Extrair categorias e instituições únicas
-  const categories = apiCategories.length > 0 
+  const categories = apiCategories.length > 0
     ? apiCategories.map((c: any) => c.name).sort()
     : Array.from(new Set(transactions.map(t => t.category))).sort();
-    
+
   const institutions = Array.from(new Set(transactions.map(t => t.institution).filter(Boolean))).sort();
 
   // Verifica se há filtros avançados ativos
@@ -197,9 +207,9 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
             <IconButton onClick={handlePreviousMonth} size="small">
               <ChevronLeft />
             </IconButton>
-            <Box sx={{ 
-              display: 'flex', 
-              alignItems: 'center', 
+            <Box sx={{
+              display: 'flex',
+              alignItems: 'center',
               gap: 1,
               px: 2,
               py: 0.5,
@@ -212,13 +222,13 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
                 value={selectedMonth}
                 onChange={(e) => handleMonthChange(Number(e.target.value))}
                 variant="standard"
-                sx={{ 
+                sx={{
                   minWidth: 120,
                   '& .MuiInput-underline:before': { borderBottom: 'none' },
                   '& .MuiInput-underline:hover:before': { borderBottom: 'none' },
                   '& .MuiInput-underline:after': { borderBottom: 'none' },
-                  '& .MuiSelect-select': { 
-                    fontWeight: 600, 
+                  '& .MuiSelect-select': {
+                    fontWeight: 600,
                     fontSize: '1.1rem',
                     textAlign: 'center',
                   },
@@ -234,13 +244,13 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
                 value={selectedYear}
                 onChange={(e) => handleYearChange(Number(e.target.value))}
                 variant="standard"
-                sx={{ 
+                sx={{
                   minWidth: 80,
                   '& .MuiInput-underline:before': { borderBottom: 'none' },
                   '& .MuiInput-underline:hover:before': { borderBottom: 'none' },
                   '& .MuiInput-underline:after': { borderBottom: 'none' },
-                  '& .MuiSelect-select': { 
-                    fontWeight: 600, 
+                  '& .MuiSelect-select': {
+                    fontWeight: 600,
                     fontSize: '1.1rem',
                   },
                 }}
@@ -254,11 +264,11 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
               <ChevronRight />
             </IconButton>
           </Box>
-          
+
           {/* Quick month buttons for mobile */}
-          <Box sx={{ 
-            display: { xs: 'none', sm: 'flex' }, 
-            justifyContent: 'center', 
+          <Box sx={{
+            display: { xs: 'none', sm: 'flex' },
+            justifyContent: 'center',
             flexWrap: 'wrap',
             gap: 0.5,
           }}>
@@ -270,11 +280,11 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
               sx={{ flexWrap: 'wrap', justifyContent: 'center' }}
             >
               {MONTH_NAMES.map((name, index) => (
-                <ToggleButton 
-                  key={index} 
+                <ToggleButton
+                  key={index}
                   value={index}
-                  sx={{ 
-                    px: 1.5, 
+                  sx={{
+                    px: 1.5,
                     py: 0.5,
                     fontSize: '0.75rem',
                     textTransform: 'capitalize',
@@ -284,6 +294,44 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
+          </Box>
+        </Box>
+
+        {/* Toggle de Filtro por Data */}
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 1.5,
+          mb: 3,
+          flexWrap: 'wrap',
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <Event fontSize="small" color="action" />
+            <ToggleButtonGroup
+              value={filters.dateFilterField || 'date'}
+              exclusive
+              onChange={(_, value) => value && handleDateFilterFieldChange(value)}
+              size="small"
+              sx={{
+                '& .MuiToggleButton-root': {
+                  px: 2,
+                  py: 0.5,
+                  textTransform: 'none',
+                  fontSize: '0.8rem',
+                },
+              }}
+            >
+              <ToggleButton value="date">
+                📅 Data da Compra
+              </ToggleButton>
+              <ToggleButton value="dueDate">
+                💳 Data de Vencimento
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Tooltip title="Data da Compra: quando a transação foi realizada. Data de Vencimento: quando a fatura do cartão vence.">
+              <InfoOutlined sx={{ fontSize: 16, color: 'text.secondary', cursor: 'help' }} />
+            </Tooltip>
           </Box>
         </Box>
 
@@ -315,15 +363,7 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
               <MenuItem value="thirdParty">Terceiros</MenuItem>
             </TextField>
           </Grid>
-          <Grid item xs={12} sm={6} md={4}>
-            <TextField
-              fullWidth
-              label="Buscar"
-              placeholder="Descrição, categoria..."
-              value={filters.search || ''}
-              onChange={(e) => handleChange('search', e.target.value)}
-            />
-          </Grid>
+
         </Grid>
 
         {/* Filtros Avançados - Accordion */}
@@ -394,11 +434,11 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
                   />
                   {showBillingCycleOption && (
                     <Tooltip title="Aplicar período da fatura atual">
-                      <IconButton 
+                      <IconButton
                         onClick={applyBillingCycle}
                         color="primary"
-                        sx={{ 
-                          border: '1px solid', 
+                        sx={{
+                          border: '1px solid',
                           borderColor: 'divider',
                           borderRadius: 1,
                         }}

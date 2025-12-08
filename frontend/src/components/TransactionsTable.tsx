@@ -26,6 +26,8 @@ import {
   DialogActions,
   TextField,
   Checkbox,
+  TableSortLabel,
+  InputAdornment,
 } from '@mui/material';
 import {
   Edit,
@@ -57,7 +59,11 @@ interface TransactionsTableProps {
   selectedIds?: Set<string>;
   onSelectionChange?: (ids: Set<string>) => void;
   onDeleteSelected?: () => void;
+  searchQuery?: string;
+  onSearchChange?: (query: string) => void;
 }
+
+type Order = 'asc' | 'desc';
 
 export default function TransactionsTable({
   transactions,
@@ -71,12 +77,24 @@ export default function TransactionsTable({
   selectedIds = new Set(),
   onSelectionChange,
   onDeleteSelected,
+  searchQuery,
+  onSearchChange,
 }: TransactionsTableProps) {
   const theme = useTheme();
   const { isMobile } = useResponsive();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
+
+  // Sorting state
+  const [orderBy, setOrderBy] = useState<keyof Transaction>('date');
+  const [order, setOrder] = useState<Order>('desc');
+
+  const handleRequestSort = (property: keyof Transaction) => {
+    const isAsc = orderBy === property && order === 'asc';
+    setOrder(isAsc ? 'desc' : 'asc');
+    setOrderBy(property);
+  };
 
   // Third party dialog state
   const [thirdPartyDialogOpen, setThirdPartyDialogOpen] = useState(false);
@@ -183,14 +201,41 @@ export default function TransactionsTable({
     setPage(0);
   };
 
-  if (isLoading) {
-    return <LoadingSkeleton variant="table" count={5} />;
-  }
+  // Sorting logic
+  const sortedTransactions = React.useMemo(() => {
+    return [...transactions].sort((a, b) => {
+      // Handle date specifically
+      if (orderBy === 'date') {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        return order === 'asc' ? dateA - dateB : dateB - dateA;
+      }
 
-  const paginatedTransactions = transactions.slice(
+      // Handle strings (case insensitive)
+      const valA = a[orderBy] ?? '';
+      const valB = b[orderBy] ?? '';
+
+      if (typeof valA === 'string' && typeof valB === 'string') {
+        return order === 'asc'
+          ? valA.localeCompare(valB)
+          : valB.localeCompare(valA);
+      }
+
+      // Handle numbers
+      if (valA < valB) return order === 'asc' ? -1 : 1;
+      if (valA > valB) return order === 'asc' ? 1 : -1;
+      return 0;
+    });
+  }, [transactions, orderBy, order]);
+
+  const paginatedTransactions = sortedTransactions.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
   );
+
+  if (isLoading) {
+    return <LoadingSkeleton variant="table" count={5} />;
+  }
 
   // Mobile View - Cards
   if (isMobile) {
@@ -201,6 +246,22 @@ export default function TransactionsTable({
           titleTypographyProps={{ variant: 'h6', fontWeight: 600 }}
           action={
             <Stack direction="row" spacing={1} alignItems="center">
+              {onSearchChange && (
+                <TextField
+                  size="small"
+                  placeholder="Buscar..."
+                  value={searchQuery || ''}
+                  onChange={(e) => onSearchChange(e.target.value)}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        🔍
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ width: 140 }}
+                />
+              )}
               {selectedIds.size > 0 && (
                 <Chip
                   label={`${selectedIds.size} selecionadas`}
@@ -395,6 +456,22 @@ export default function TransactionsTable({
         titleTypographyProps={{ variant: 'h6', fontWeight: 600 }}
         action={
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            {onSearchChange && (
+              <TextField
+                size="small"
+                placeholder="Buscar..."
+                value={searchQuery || ''}
+                onChange={(e) => onSearchChange(e.target.value)}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      🔍
+                    </InputAdornment>
+                  ),
+                }}
+                sx={{ width: 220 }}
+              />
+            )}
             {selectedIds.size > 0 && (
               <Chip
                 label={`${selectedIds.size} selecionadas`}
@@ -447,11 +524,51 @@ export default function TransactionsTable({
                   </TableCell>
                 )}
                 <TableCell />
-                <TableCell>Data</TableCell>
-                <TableCell>Tipo</TableCell>
-                <TableCell>Categoria</TableCell>
-                <TableCell>Descrição</TableCell>
-                <TableCell align="right">Valor</TableCell>
+                <TableCell sortDirection={orderBy === 'date' ? order : false}>
+                  <TableSortLabel
+                    active={orderBy === 'date'}
+                    direction={orderBy === 'date' ? order : 'asc'}
+                    onClick={() => handleRequestSort('date')}
+                  >
+                    Data
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={orderBy === 'entryType' ? order : false}>
+                  <TableSortLabel
+                    active={orderBy === 'entryType'}
+                    direction={orderBy === 'entryType' ? order : 'asc'}
+                    onClick={() => handleRequestSort('entryType')}
+                  >
+                    Tipo
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={orderBy === 'category' ? order : false}>
+                  <TableSortLabel
+                    active={orderBy === 'category'}
+                    direction={orderBy === 'category' ? order : 'asc'}
+                    onClick={() => handleRequestSort('category')}
+                  >
+                    Categoria
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell sortDirection={orderBy === 'description' ? order : false}>
+                  <TableSortLabel
+                    active={orderBy === 'description'}
+                    direction={orderBy === 'description' ? order : 'asc'}
+                    onClick={() => handleRequestSort('description')}
+                  >
+                    Descrição
+                  </TableSortLabel>
+                </TableCell>
+                <TableCell align="right" sortDirection={orderBy === 'amount' ? order : false}>
+                  <TableSortLabel
+                    active={orderBy === 'amount'}
+                    direction={orderBy === 'amount' ? order : 'asc'}
+                    onClick={() => handleRequestSort('amount')}
+                  >
+                    Valor
+                  </TableSortLabel>
+                </TableCell>
                 <TableCell>Parcela</TableCell>
                 <TableCell align="center">Ações</TableCell>
               </TableRow>

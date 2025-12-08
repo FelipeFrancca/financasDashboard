@@ -36,6 +36,7 @@ export interface Transaction {
 export interface TransactionFilters {
   startDate?: string;
   endDate?: string;
+  dateFilterField?: 'date' | 'dueDate'; // Filtrar por data da transação ou data de vencimento
   entryType?: string;
   flowType?: string;
   category?: string;

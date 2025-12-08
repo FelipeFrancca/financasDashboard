@@ -231,6 +231,9 @@ interface NotificationOptions {
     cancelButtonText?: string;
     confirmButtonColor?: string;
     cancelButtonColor?: string;
+    showDenyButton?: boolean;
+    denyButtonText?: string;
+    denyButtonColor?: string;
 }
 
 /**

@@ -4,6 +4,7 @@ import type { Transaction, Prisma } from "@prisma/client";
 export type TransactionFilters = {
   startDate?: string;
   endDate?: string;
+  dateFilterField?: 'date' | 'dueDate'; // Filtrar por data da transação ou data de vencimento
   entryType?: string;
   flowType?: string;
   category?: string;
@@ -23,13 +24,16 @@ export async function getAllTransactions(filters: TransactionFilters = {}, dashb
 
   const where: any = { dashboardId, deletedAt: null };
 
+  // Determinar qual campo de data usar para filtro (padrão: date)
+  const dateField = filters.dateFilterField || 'date';
+
   if (filters.startDate || filters.endDate) {
-    where.date = {};
+    where[dateField] = {};
     if (filters.startDate) {
-      where.date.gte = new Date(filters.startDate);
+      where[dateField].gte = new Date(filters.startDate);
     }
     if (filters.endDate) {
-      where.date.lte = new Date(filters.endDate);
+      where[dateField].lte = new Date(filters.endDate);
     }
   }
   if (filters.entryType) {
@@ -59,12 +63,17 @@ export async function getAllTransactions(filters: TransactionFilters = {}, dashb
   }
 
   if (filters.search) {
+    // Remove espaços extras e normaliza a busca
+    const searchText = filters.search.trim();
+
+    // Busca em múltiplos campos ignorando case
     where.OR = [
-      { description: { contains: filters.search, mode: "insensitive" } },
-      { category: { contains: filters.search, mode: "insensitive" } },
-      { subcategory: { contains: filters.search, mode: "insensitive" } },
-      { notes: { contains: filters.search, mode: "insensitive" } },
-      { thirdPartyName: { contains: filters.search, mode: "insensitive" } },
+      { description: { contains: searchText, mode: "insensitive" } },
+      { category: { contains: searchText, mode: "insensitive" } },
+      { subcategory: { contains: searchText, mode: "insensitive" } },
+      { notes: { contains: searchText, mode: "insensitive" } },
+      { thirdPartyName: { contains: searchText, mode: "insensitive" } },
+      { institution: { contains: searchText, mode: "insensitive" } },
     ];
   }
 

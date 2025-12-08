@@ -49,6 +49,7 @@ import {
 } from '@mui/icons-material';
 import { useParams } from 'react-router-dom';
 import Papa from 'papaparse';
+import { addMonths } from 'date-fns';
 import { ingestionService, transactionService } from '../services/api';
 import { showError, showErrorWithRetry, showSuccess, showWarning, showConfirm } from '../utils/notifications';
 import { useCategories, useCreateCategory } from '../hooks/api/useCategories';
@@ -59,35 +60,47 @@ import { hoverLift } from '../utils/animations';
 
 /**
  * Verifica se duas transações são potencialmente duplicadas
- * Critérios: mesma data + valor igual + descrição similar (>70% match)
+ * Critérios: mesmo mês/ano + valor igual + descrição similar (>50% match)
  */
 function isPotentialDuplicate(
   newTx: { date: string | null; amount: number; description: string },
   existingTx: Transaction
 ): boolean {
-  // Comparar datas (mesmo dia)
+  // Comparar datas (mesmo mês/ano - não exige mesmo dia para parcelas)
   if (newTx.date && existingTx.date) {
-    const newDate = new Date(newTx.date).toDateString();
-    const existDate = new Date(existingTx.date).toDateString();
-    if (newDate !== existDate) return false;
+    const newDate = new Date(newTx.date);
+    const existDate = new Date(existingTx.date);
+    // Compara mês e ano
+    if (newDate.getMonth() !== existDate.getMonth() ||
+      newDate.getFullYear() !== existDate.getFullYear()) {
+      return false;
+    }
   }
 
   // Comparar valores (tolerância de R$0.01)
   if (Math.abs(Math.abs(newTx.amount) - Math.abs(existingTx.amount)) > 0.01) return false;
 
   // Comparar descrições (similaridade)
-  const newDesc = newTx.description.toLowerCase().trim();
-  const existDesc = existingTx.description.toLowerCase().trim();
+  // Remove números de parcela para comparação (ex: "(1/12)" -> "")
+  const cleanDescription = (desc: string) =>
+    desc.toLowerCase().trim().replace(/\s*\(\d+\/\d+\)\s*/g, '').replace(/\s+/g, ' ');
 
-  // Match exato ou parcial (pelo menos 70% das palavras em comum)
+  const newDesc = cleanDescription(newTx.description);
+  const existDesc = cleanDescription(existingTx.description);
+
+  // Match exato
   if (newDesc === existDesc) return true;
 
-  const newWords = new Set(newDesc.split(/\s+/));
-  const existWords = new Set(existDesc.split(/\s+/));
-  const commonWords = [...newWords].filter(w => existWords.has(w));
-  const similarity = commonWords.length / Math.max(newWords.size, existWords.size);
+  // Match parcial (pelo menos 50% das palavras em comum)
+  const newWords = new Set(newDesc.split(/\s+/).filter(w => w.length > 2));
+  const existWords = new Set(existDesc.split(/\s+/).filter(w => w.length > 2));
 
-  return similarity >= 0.7;
+  if (newWords.size === 0 || existWords.size === 0) return false;
+
+  const commonWords = [...newWords].filter(w => existWords.has(w));
+  const similarity = commonWords.length / Math.min(newWords.size, existWords.size);
+
+  return similarity >= 0.5;
 }
 
 /**
@@ -593,14 +606,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     return null;
   };
 
-  /**
-   * Adiciona meses a uma data
-   */
-  const addMonths = (date: Date, months: number): Date => {
-    const result = new Date(date);
-    result.setMonth(result.getMonth() + months);
-    return result;
-  };
+
 
   const selectAllTransactions = () => {
     if (result?.transactions) {
@@ -730,6 +736,18 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
       }
     }
 
+    // Get account details for date calculation
+    let linkedAccountClosingDay: number | undefined;
+    let linkedAccountDueDay: number | undefined;
+
+    if (linkedAccountId) {
+      const acc = accounts.find((a: Account) => a.id === linkedAccountId);
+      if (acc) {
+        linkedAccountClosingDay = acc.closingDay;
+        linkedAccountDueDay = acc.dueDay;
+      }
+    }
+
     // Usar institution da fatura caso não tenha da conta
     if (!linkedInstitution) {
       linkedInstitution = result.statementInfo?.institution || undefined;
@@ -756,14 +774,36 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     }> = [];
 
     let totalInstallmentsCreated = 0;
+    let skippedPayments = 0;
+    let skippedRefunds = 0;
 
     for (const tx of selectedTxs) {
       const installment = parseInstallmentInfo(tx.installmentInfo);
       const description = tx.merchant || tx.description || 'Transação';
       const amount = Math.abs(tx.amount); // Valores são sempre positivos
-      // isRefund = true OU valor negativo significa estorno/receita
+
+      // Verificar se é pagamento de fatura (não importar - é movimentação interna)
+      const txForCheck = {
+        description: tx.merchant || tx.description,
+        merchant: tx.merchant,
+        category: tx.category,
+        amount: tx.amount
+      };
+      if (isPagamentoFatura(txForCheck)) {
+        console.log(`⏭️ Ignorando pagamento de fatura: ${description} (${formatCurrency(amount)})`);
+        skippedPayments++;
+        continue; // Pular esta transação
+      }
+
+      // Verificar se é estorno/reembolso - importar como RECEITA para compensar no cálculo
       const isRefund = tx.isRefund === true || tx.amount < 0;
+
+      // Estornos são receitas, demais são despesas
       const entryType = isRefund ? 'Receita' as const : 'Despesa' as const;
+
+      if (isRefund) {
+        console.log(`✅ Importando estorno como Receita: ${description} (${formatCurrency(amount)})`);
+      }
 
       const originalCat = tx.category || 'Outros';
       const finalCategory = categoryReplacementMap.get(originalCat) || originalCat;
@@ -784,26 +824,77 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         // Gerar ID único para vincular todas as parcelas deste grupo
         const groupId = crypto.randomUUID();
 
-        // Transação parcelada - criar apenas a parcela atual e futuras
-        // NÃO criar parcelas passadas (já foram pagas em faturas anteriores)
-        for (let i = installment.current; i <= installment.total; i++) {
-          const monthsToAdd = i - installment.current;
-          // Usar a data de vencimento da fatura como base para cálculo das parcelas
-          const installmentDueDate = addMonths(statementDueDate, monthsToAdd);
+        // Check if we can calculate the EXACT first installment date based on card settings
+        let calculatedFirstInstallmentDate: Date | null = null;
+
+        if (linkedAccountClosingDay && linkedAccountDueDay) {
+          const pDay = transactionDate.getDate();
+          const pMonth = transactionDate.getMonth();
+          const pYear = transactionDate.getFullYear();
+
+          // Determine the billing cycle based on closing day
+          let closingMonth = pMonth;
+          let closingYear = pYear;
+
+          // If purchase is AFTER closing day, it belongs to NEXT closing cycle.
+          if (pDay > linkedAccountClosingDay) {
+            closingMonth++;
+            if (closingMonth > 11) {
+              closingMonth = 0;
+              closingYear++;
+            }
+          }
+
+          // Determine the Due Date Month/Year relative to this Closing Month
+          let dueMonth = closingMonth;
+          let dueYear = closingYear;
+
+          // If due day is smaller than closing day (e.g. 7 < 30), it implies next month relative to closing
+          if (linkedAccountDueDay < linkedAccountClosingDay) {
+            dueMonth++;
+            if (dueMonth > 11) {
+              dueMonth = 0;
+              dueYear++;
+            }
+          }
+
+          calculatedFirstInstallmentDate = new Date(dueYear, dueMonth, linkedAccountDueDay);
+        }
+
+        // Criar TODAS as parcelas (de 1 até total)
+        for (let i = 1; i <= installment.total; i++) {
+          let installmentDate: Date;
+
+          if (calculatedFirstInstallmentDate) {
+            // Calculate based on the precise first installment date
+            // (i-1) gives us the offset to add to the first installment
+            installmentDate = addMonths(calculatedFirstInstallmentDate, i - 1);
+          } else {
+            // Fallback to statementDueDate anchor
+            // Note: statementDueDate corresponds to the current installment (i = installment.current)
+            const monthsFromCurrent = i - installment.current;
+            installmentDate = addMonths(statementDueDate, monthsFromCurrent);
+          }
+
+          // Determinar status: passadas = Paga, atual = Paga, futuras = Pendente
+          let status: 'Paga' | 'Pendente' = 'Pendente';
+          if (i < installment.current) {
+            status = 'Paga'; // Parcelas passadas já foram pagas
+          } else if (i === installment.current) {
+            status = 'Paga'; // Parcela atual está nesta fatura
+          }
 
           allTransactionsToSave.push({
             description: `${description} (${i}/${installment.total})`,
             amount,
-            // IMPORTANTE: Para parcelas, usamos a data de VENCIMENTO como data principal
-            // Assim cada parcela aparece no mês correto da fatura
-            date: installmentDueDate.toISOString(),
-            dueDate: installmentDueDate.toISOString(),
+            date: installmentDate.toISOString(),
+            dueDate: installmentDate.toISOString(),
             entryType,
             flowType: 'Variável' as const,
             category: finalCategory,
             installmentTotal: installment.total,
             installmentNumber: i,
-            installmentStatus: i === installment.current ? 'Paga' as const : 'Pendente' as const,
+            installmentStatus: status,
             installmentGroupId: groupId,
             isTemporary: false,
             dashboardId,
@@ -849,16 +940,37 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         const moreText = duplicateCount > 3 ? `\n...e mais ${duplicateCount - 3}` : '';
 
         const confirmed = await showConfirm(
-          `Foram encontradas ${duplicateCount} possíveis transações duplicadas:\n\n${duplicateList}${moreText}\n\nDeseja importar mesmo assim?`,
+          `Foram encontradas ${duplicateCount} possíveis transações duplicadas:\n\n${duplicateList}${moreText}\n\nO que deseja fazer?`,
           {
             title: '⚠️ Possíveis Duplicatas',
-            confirmButtonText: 'Sim, importar todas',
+            confirmButtonText: 'Ignorar duplicatas e importar',
+            confirmButtonColor: '#10b981', // green
+            showDenyButton: true,
+            denyButtonText: 'Importar TUDO (Duplicar)',
+            denyButtonColor: '#f59e0b', // orange
             cancelButtonText: 'Cancelar',
             icon: 'warning'
           }
         );
 
-        if (!confirmed.isConfirmed) {
+        if (confirmed.isConfirmed) {
+          // Remover duplicatas da lista (indices salvos no Map duplicates)
+          const indicesToRemove = new Set(duplicates.keys());
+          const filteredTransactions = allTransactionsToSave.filter((_, idx) => !indicesToRemove.has(idx));
+
+          if (filteredTransactions.length === 0) {
+            showWarning('Todas as transações eram duplicatas e foram removidas.');
+            return;
+          }
+
+          // Atualiza a lista para salvar apenas as não duplicadas
+          allTransactionsToSave.splice(0, allTransactionsToSave.length, ...filteredTransactions);
+
+          showSuccess(`${duplicateCount} transações duplicatas foram removidas.`);
+        } else if (confirmed.isDenied) {
+          // Prosseguir com TODAS (incluindo duplicatas) -> nada a fazer
+        } else {
+          // Cancelou
           setDuplicateWarnings(duplicates);
           showWarning(`${duplicateCount} possíveis duplicatas marcadas. Revise ou desmarque antes de importar.`);
           return;
@@ -873,7 +985,12 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
       const installmentsMsg = totalInstallmentsCreated > selectedTransactions.size
         ? ` (incluindo ${totalInstallmentsCreated - selectedTransactions.size} parcelas futuras)`
         : '';
-      showSuccess(`${allTransactionsToSave.length} transações importadas com sucesso!${installmentsMsg}`);
+
+      const skippedMsg = (skippedPayments + skippedRefunds) > 0
+        ? ` | Ignorados: ${skippedPayments > 0 ? `${skippedPayments} pagamento(s)` : ''}${skippedPayments > 0 && skippedRefunds > 0 ? ', ' : ''}${skippedRefunds > 0 ? `${skippedRefunds} estorno(s)` : ''}`
+        : '';
+
+      showSuccess(`${allTransactionsToSave.length} transações importadas com sucesso!${installmentsMsg}${skippedMsg}`);
       handleClear();
     } catch (error) {
       showError(error, { title: 'Erro', text: 'Não foi possível salvar as transações.' });
@@ -882,22 +999,50 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     }
   };
 
+  /**
+   * Verifica se uma transação é um pagamento de fatura anterior
+   * Padrões comuns: "PAGAMENTO", "PAG FATURA", "PAGTO", etc.
+   */
+  const isPagamentoFatura = (tx: {
+    description?: string | null;
+    merchant?: string | null;
+    category?: string | null;
+    amount: number;
+  }) => {
+    const desc = (tx.description || tx.merchant || '').toLowerCase();
+    const cat = (tx.category || '').toLowerCase();
+
+    // Palavras-chave que indicam pagamento de fatura
+    const paymentKeywords = ['pagamento', 'pagto', 'pag fatura', 'pag. fatura', 'crédito recebido'];
+
+    const hasPaymentKeyword = paymentKeywords.some(kw => desc.includes(kw) || cat.includes(kw));
+
+    // Pagamento de fatura geralmente é um valor grande e pode ser positivo ou negativo
+    return hasPaymentKeyword;
+  };
+
   const getSelectedTotal = () => {
     if (!result?.transactions) return 0;
-    // Calcula total de despesas excluindo:
-    // 1. Pagamentos de fatura (movimentações internas)
-    // 2. Estornos/reembolsos (já descontados pelo banco no total da fatura)
+    // Calcula total da fatura:
+    // - Soma todas as despesas
+    // - Subtrai estornos (que reduzem o valor da fatura)
+    // - Exclui pagamentos de fatura (movimentações internas)
     return result.transactions
       .filter((_, i) => selectedTransactions.has(i))
       .filter(tx => {
-        const cat = (tx.category || '').toLowerCase();
         // Exclui pagamentos de fatura (são movimentações internas do cartão)
-        const isPagamentoFatura = cat.includes('pagamento') && tx.amount < 0;
-        // Exclui estornos (o banco já descontou do total da fatura)
-        const isRefund = tx.isRefund === true || tx.amount < 0;
-        return !isPagamentoFatura && !isRefund;
+        if (isPagamentoFatura(tx)) return false;
+        return true;
       })
-      .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+      .reduce((sum, tx) => {
+        const isRefund = tx.isRefund === true || tx.amount < 0;
+        if (isRefund) {
+          // Estornos reduzem o valor total
+          return sum - Math.abs(tx.amount);
+        }
+        // Despesas normais somam ao total
+        return sum + Math.abs(tx.amount);
+      }, 0);
   };
 
   // Conta quantos são pagamentos de fatura (para informar o usuário)
@@ -905,11 +1050,35 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     if (!result?.transactions) return 0;
     return result.transactions
       .filter((_, i) => selectedTransactions.has(i))
-      .filter(tx => {
-        const cat = (tx.category || '').toLowerCase();
-        return cat.includes('pagamento') && tx.amount < 0;
-      })
+      .filter(tx => isPagamentoFatura(tx))
       .length;
+  };
+
+  // Calcula o valor total de pagamentos de fatura excluídos
+  const getPaymentTotal = () => {
+    if (!result?.transactions) return 0;
+    return result.transactions
+      .filter((_, i) => selectedTransactions.has(i))
+      .filter(tx => isPagamentoFatura(tx))
+      .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
+  };
+
+  // Conta quantos estornos/reembolsos estão sendo excluídos
+  const getRefundCount = () => {
+    if (!result?.transactions) return 0;
+    return result.transactions
+      .filter((_, i) => selectedTransactions.has(i))
+      .filter(tx => !isPagamentoFatura(tx) && (tx.isRefund === true || tx.amount < 0))
+      .length;
+  };
+
+  // Calcula o valor total de estornos excluídos
+  const getRefundTotal = () => {
+    if (!result?.transactions) return 0;
+    return result.transactions
+      .filter((_, i) => selectedTransactions.has(i))
+      .filter(tx => !isPagamentoFatura(tx) && (tx.isRefund === true || tx.amount < 0))
+      .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
   };
 
   const formatCurrency = (value: number) => {
@@ -1685,7 +1854,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                               <Box>
                                 <Typography variant="body2" fontWeight={600} gutterBottom>Como este valor é calculado:</Typography>
                                 <Typography variant="body2">• Soma das despesas selecionadas</Typography>
-                                <Typography variant="body2">• Exclui estornos/reembolsos (já descontados pelo banco)</Typography>
+                                <Typography variant="body2">• Estornos/reembolsos são importados como Receita</Typography>
                                 <Typography variant="body2">• Exclui pagamentos de faturas anteriores</Typography>
                                 <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
                                   Diferença com "Total da Fatura" pode ocorrer por juros, taxas ou transações futuras.
@@ -1703,8 +1872,13 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                         </Typography>
                       </Stack>
                       {getPaymentCount() > 0 && (
-                        <Typography variant="caption" color="text.secondary">
-                          * Excluindo {getPaymentCount()} pagamento(s) de fatura anterior
+                        <Typography variant="caption" color="warning.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          ⚠️ Excluindo {getPaymentCount()} pagamento(s) de fatura anterior ({formatCurrency(getPaymentTotal())})
+                        </Typography>
+                      )}
+                      {getRefundCount() > 0 && (
+                        <Typography variant="caption" color="info.main" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          💰 {getRefundCount()} estorno(s) ({formatCurrency(getRefundTotal())}) serão importados como Receita
                         </Typography>
                       )}
                     </Stack>

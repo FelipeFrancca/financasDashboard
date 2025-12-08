@@ -267,6 +267,8 @@ export default function DashboardFinancial() {
         selectedIds={selectedTransactionIds}
         onSelectionChange={setSelectedTransactionIds}
         onDeleteSelected={handleDeleteSelected}
+        searchQuery={filters.search}
+        onSearchChange={(query) => setFilters((prev) => ({ ...prev, search: query }))}
       />
 
       {/* Modais */}

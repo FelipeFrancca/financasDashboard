@@ -1,9 +1,10 @@
-import { Grid, Card, CardContent, Typography, Box } from '@mui/material';
+import { Grid, Card, CardContent, Typography, Box, Tooltip } from '@mui/material';
 import {
   TrendingUp,
   TrendingDown,
   AccountBalance,
-  Shield
+  Shield,
+  InfoOutlined
 } from '@mui/icons-material';
 import type { StatsSummary, Transaction } from '../types';
 import { MetricCardSkeleton } from './LoadingSkeleton';
@@ -28,6 +29,7 @@ export default function MetricsCards({ stats, isLoading = false }: MetricsCardsP
       icon: TrendingUp,
       color: 'income.main',
       bg: 'rgba(52, 211, 153, 0.12)',
+      tooltip: 'Soma de todas as entradas de dinheiro (salários, vendas, rendimentos, etc.) no período selecionado.',
     },
     {
       title: 'Despesas Totais',
@@ -35,6 +37,7 @@ export default function MetricsCards({ stats, isLoading = false }: MetricsCardsP
       icon: TrendingDown,
       color: 'expense.main',
       bg: 'rgba(248, 113, 113, 0.12)',
+      tooltip: 'Soma de todos os gastos (compras, contas, parcelas, etc.) no período selecionado. Não inclui estornos.',
     },
     {
       title: 'Resultado Líquido',
@@ -42,6 +45,7 @@ export default function MetricsCards({ stats, isLoading = false }: MetricsCardsP
       icon: AccountBalance,
       color: stats.netResult >= 0 ? 'net.main' : 'expense.main',
       bg: stats.netResult >= 0 ? 'rgba(96, 165, 250, 0.12)' : 'rgba(248, 113, 113, 0.12)',
+      tooltip: 'Receitas - Despesas = Resultado. Positivo significa que você está economizando, negativo significa gastos acima da renda.',
     },
     {
       title: 'Margem Saudável',
@@ -49,6 +53,7 @@ export default function MetricsCards({ stats, isLoading = false }: MetricsCardsP
       icon: Shield,
       color: stats.savingsRate >= 20 ? 'success.main' : 'warning.main',
       bg: stats.savingsRate >= 20 ? 'rgba(52, 211, 153, 0.12)' : 'rgba(251, 191, 36, 0.12)',
+      tooltip: '(Receitas - Despesas) ÷ Receitas × 100. Indica quanto % da sua renda está sobrando. Acima de 20% é considerado saudável.',
     },
   ];
 
@@ -93,15 +98,28 @@ export default function MetricsCards({ stats, isLoading = false }: MetricsCardsP
                   mb: 2
                 }}
               >
-                <Typography
-                  variant="caption"
-                  color="text.secondary"
-                  textTransform="uppercase"
-                  fontWeight={600}
-                  sx={{ letterSpacing: 0.5 }}
-                >
-                  {metric.title}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    textTransform="uppercase"
+                    fontWeight={600}
+                    sx={{ letterSpacing: 0.5 }}
+                  >
+                    {metric.title}
+                  </Typography>
+                  <Tooltip title={metric.tooltip} arrow placement="top">
+                    <InfoOutlined
+                      sx={{
+                        fontSize: 14,
+                        color: 'text.secondary',
+                        cursor: 'help',
+                        opacity: 0.7,
+                        '&:hover': { opacity: 1 }
+                      }}
+                    />
+                  </Tooltip>
+                </Box>
                 <Box
                   sx={{
                     p: 1,
@@ -140,3 +158,4 @@ export default function MetricsCards({ stats, isLoading = false }: MetricsCardsP
     </Grid>
   );
 }
+
