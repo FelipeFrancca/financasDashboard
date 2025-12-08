@@ -144,11 +144,19 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
     }
   };
 
-  const handleSaveTransaction = async (data: Partial<Transaction>) => {
+  const handleSaveTransaction = async (data: Partial<Transaction>, scope?: 'single' | 'remaining' | 'all') => {
     try {
       if (selectedTransaction) {
-        await transactionService.update(selectedTransaction.id, data);
-        showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!', timer: 2000 });
+        // Check if this is an installment transaction with group and scope is not 'single'
+        const groupId = (selectedTransaction as any).installmentGroupId;
+        const txDashboardId = (selectedTransaction as any).dashboardId;
+        if (groupId && scope && scope !== 'single' && txDashboardId) {
+          const result = await transactionService.updateInstallmentGroup(groupId, data, txDashboardId, scope);
+          showSuccess(`${result.count} parcelas atualizadas com sucesso.`, { title: 'Atualizado!', timer: 2000 });
+        } else {
+          await transactionService.update(selectedTransaction.id, data);
+          showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!', timer: 2000 });
+        }
       } else {
         await transactionService.create(data as any);
         showSuccess('Transação criada com sucesso.', { title: 'Criado!', timer: 2000 });
@@ -156,7 +164,17 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
       refetch();
       setShowTransactionForm(false);
     } catch (error) {
-      showErrorWithRetry(error, () => handleSaveTransaction(data));
+      showErrorWithRetry(error, () => handleSaveTransaction(data, scope));
+    }
+  };
+
+  const handleThirdPartyUpdate = async (id: string, data: { isThirdParty: boolean; thirdPartyName?: string; thirdPartyDescription?: string }) => {
+    try {
+      await transactionService.update(id, data);
+      refetch();
+      showSuccess(data.isThirdParty ? 'Terceiro adicionado.' : 'Terceiro removido.', { title: 'Atualizado!' });
+    } catch (error) {
+      showErrorWithRetry(error, () => handleThirdPartyUpdate(id, data));
     }
   };
 
@@ -332,6 +350,7 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
           onDelete={handleDeleteTransaction}
           onNew={handleNewTransaction}
           onExport={handleExport}
+          onThirdPartyUpdate={handleThirdPartyUpdate}
         />
       </Container>
 

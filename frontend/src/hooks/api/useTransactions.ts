@@ -78,3 +78,49 @@ export const useCreateManyTransactions = () => {
         },
     });
 };
+
+export const useUpdateInstallmentGroup = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({
+            groupId,
+            data,
+            dashboardId,
+            scope
+        }: {
+            groupId: string;
+            data: Partial<Transaction>;
+            dashboardId: string;
+            scope: 'single' | 'remaining' | 'all'
+        }) => transactionService.updateInstallmentGroup(groupId, data, dashboardId, scope),
+        onSuccess: () => {
+            // Invalidate all transaction queries to refresh data
+            queryClient.invalidateQueries({ queryKey: ['transactions'] });
+            queryClient.invalidateQueries({ queryKey: ['stats'] });
+        },
+    });
+};
+
+export const useDeleteManyTransactions = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({
+            ids,
+            dashboardId,
+            includeInstallments = true
+        }: {
+            ids: string[];
+            dashboardId: string;
+            includeInstallments?: boolean
+        }) => transactionService.deleteMany(ids, dashboardId, includeInstallments),
+        onSuccess: (_, variables) => {
+            queryClient.setQueriesData({ queryKey: ['transactions'] }, (oldData: Transaction[] | undefined) => {
+                if (!oldData) return oldData;
+                return oldData.filter((t) => !variables.ids.includes(t.id));
+            });
+            queryClient.invalidateQueries({ queryKey: ['stats'] });
+        },
+    });
+};

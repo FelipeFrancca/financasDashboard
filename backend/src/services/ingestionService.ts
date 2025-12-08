@@ -19,7 +19,18 @@ import type {
     RegexExtractionResult,
     GeminiFinancialData,
     SupportedMimeType,
+    ExtractedTransaction,
+    StatementInfo,
 } from '../types/ingestion.types';
+
+/**
+ * Resposta estruturada do Gemini para faturas de cartão
+ */
+interface GeminiStatementResponse {
+    isMultiTransaction: boolean;
+    transactions: ExtractedTransaction[];
+    statementInfo: StatementInfo;
+}
 
 /**
  * Códigos de erro do Gemini que são retryable
@@ -45,7 +56,7 @@ export class IngestionService {
     // Configurações de retry
     private static readonly MAX_RETRIES = 3;
     private static readonly BASE_DELAY_MS = 1000;
-    private static readonly REQUEST_TIMEOUT_MS = 30000;
+    private static readonly REQUEST_TIMEOUT_MS = 90000; // 90 segundos para PDFs multi-página
 
     /**
      * Processa um arquivo e extrai dados financeiros
@@ -405,9 +416,31 @@ export class IngestionService {
 
                 logger.debug('Resposta bruta do Gemini:', 'IngestionService', { text });
 
-                // Parse do JSON com tratamento robusto
-                const data = this.parseGeminiResponse(text);
+                // Parse do JSON com tratamento robusto (pode ser single ou multi)
+                const parsed = this.parseGeminiResponse(text);
 
+                // Verifica se é resposta multi-transação
+                if ('isMultiTransaction' in parsed && parsed.isMultiTransaction) {
+                    const multiData = parsed as GeminiStatementResponse;
+                    logger.info('Extração multi-transação via IA concluída', 'IngestionService', {
+                        transactionCount: multiData.transactions?.length || 0,
+                        institution: multiData.statementInfo?.institution,
+                    });
+
+                    return {
+                        merchant: multiData.statementInfo?.institution || 'Fatura de Cartão',
+                        date: multiData.statementInfo?.dueDate || new Date().toISOString(),
+                        amount: multiData.statementInfo?.totalAmount || 0,
+                        confidence: 0.95,
+                        extractionMethod: 'ai',
+                        isMultiTransaction: true,
+                        transactions: multiData.transactions,
+                        statementInfo: multiData.statementInfo,
+                    };
+                }
+
+                // Resposta single-transaction (comportamento original)
+                const data = parsed as GeminiFinancialData;
                 logger.info('Extração via IA concluída com sucesso', 'IngestionService', {
                     merchant: data.merchant,
                     amount: data.amount,
@@ -420,7 +453,7 @@ export class IngestionService {
                     amount: data.amount ?? 0,
                     category: data.category,
                     items: data.items,
-                    confidence: 0.95, // Alta confiança para IA
+                    confidence: 0.95,
                     extractionMethod: 'ai',
                 };
 
@@ -463,8 +496,9 @@ export class IngestionService {
 
     /**
      * Parse robusto da resposta do Gemini
+     * Suporta tanto respostas single-transaction quanto multi-transaction
      */
-    private parseGeminiResponse(text: string): GeminiFinancialData {
+    private parseGeminiResponse(text: string): GeminiFinancialData | GeminiStatementResponse {
         // Remove blocos de código markdown
         let cleanedText = text.replace(/```json\n?|\n?```/g, '').trim();
 
@@ -476,28 +510,30 @@ export class IngestionService {
             }
         }
 
-        logger.debug('Texto limpo para parse:', 'IngestionService', { cleanedText });
+        logger.debug('Texto limpo para parse:', 'IngestionService', { cleanedText: cleanedText.substring(0, 500) });
 
         try {
-            const data = JSON.parse(cleanedText) as GeminiFinancialData;
+            const data = JSON.parse(cleanedText);
 
-            // Valida campos obrigatórios
-            if (typeof data.amount !== 'number' && data.amount !== null) {
-                // Tenta converter string para número
-                if (typeof data.amount === 'string') {
-                    const amountStr = data.amount as unknown as string;
-                    const parsed = parseFloat(amountStr.replace(/[^\d.,]/g, '').replace(',', '.'));
-                    if (!isNaN(parsed)) {
-                        data.amount = parsed;
-                    } else {
-                        data.amount = 0;
-                    }
-                } else {
-                    data.amount = 0;
+            // Verifica se é resposta multi-transação
+            if (data.isMultiTransaction === true && Array.isArray(data.transactions)) {
+                // Normaliza valores das transações
+                data.transactions = data.transactions.map((t: any) => ({
+                    ...t,
+                    amount: this.normalizeAmount(t.amount),
+                }));
+
+                // Normaliza valor total da fatura
+                if (data.statementInfo?.totalAmount) {
+                    data.statementInfo.totalAmount = this.normalizeAmount(data.statementInfo.totalAmount);
                 }
+
+                return data as GeminiStatementResponse;
             }
 
-            return data;
+            // Resposta single-transaction - normaliza amount
+            data.amount = this.normalizeAmount(data.amount);
+            return data as GeminiFinancialData;
         } catch (parseError) {
             logger.error('Erro ao fazer parse do JSON do Gemini', parseError, 'IngestionService', {
                 originalText: cleanedText.substring(0, 500),
@@ -511,7 +547,21 @@ export class IngestionService {
     }
 
     /**
+     * Normaliza valor monetário para número
+     */
+    private normalizeAmount(amount: any): number {
+        if (typeof amount === 'number') return amount;
+        if (amount === null || amount === undefined) return 0;
+        if (typeof amount === 'string') {
+            const parsed = parseFloat(amount.replace(/[^\d.,]/g, '').replace(',', '.'));
+            return isNaN(parsed) ? 0 : parsed;
+        }
+        return 0;
+    }
+
+    /**
      * Cria o prompt otimizado para o Gemini
+     * Detecta automaticamente se é fatura de cartão (múltiplas transações) ou documento único
      */
     private buildFinancialExtractionPrompt(availableCategories: string[]): string {
         const categoriesStr = availableCategories.length > 0
@@ -521,32 +571,54 @@ export class IngestionService {
         return `Você é um especialista em extração de dados financeiros de documentos brasileiros.
 ${categoriesStr}
 
-Analise a imagem ou PDF e extraia as seguintes informações em formato JSON:
+ANALISE O DOCUMENTO E DETERMINE O TIPO:
+
+**TIPO 1 - FATURA DE CARTÃO DE CRÉDITO**
+Se o documento for uma fatura de cartão de crédito (contém múltiplas compras, lista de transações, data de vencimento, limite de crédito), retorne:
 
 {
-  "merchant": "Nome do estabelecimento/comerciante",
-  "date": "Data da transação no formato ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ)",
-  "amount": Valor total como número decimal (ex: 1200.50),
-  "category": "Categoria da despesa (escolha uma das disponíveis ou sugira uma nova se nenhuma se encaixar)",
-  "items": [
+  "isMultiTransaction": true,
+  "statementInfo": {
+    "institution": "Nome do banco/emissor (ex: Inter, Nubank, Itaú)",
+    "cardLastDigits": "Últimos 4 dígitos do cartão (ex: 2440)",
+    "dueDate": "Data de vencimento em ISO 8601",
+    "totalAmount": Valor total da fatura como número,
+    "holderName": "Nome do titular"
+  },
+  "transactions": [
     {
-      "description": "Descrição do item",
-      "quantity": Quantidade (opcional),
-      "unitPrice": Preço unitário (opcional),
-      "totalPrice": Preço total do item
+      "merchant": "Nome do estabelecimento",
+      "date": "Data da compra em ISO 8601",
+      "amount": Valor como número decimal,
+      "category": "Categoria sugerida",
+      "description": "Descrição adicional se houver",
+      "installmentInfo": "Parcela X de Y (se aplicável, senão null)",
+      "cardLastDigits": "Últimos 4 dígitos do cartão desta compra (se houver múltiplos cartões)"
     }
   ]
 }
 
+**TIPO 2 - DOCUMENTO ÚNICO (nota fiscal, comprovante, boleto)**
+Se for um documento com apenas UMA transação, retorne:
+
+{
+  "isMultiTransaction": false,
+  "merchant": "Nome do estabelecimento",
+  "date": "Data em ISO 8601",
+  "amount": Valor como número decimal,
+  "category": "Categoria sugerida",
+  "items": [{"description": "Item", "totalPrice": valor}] ou null
+}
+
 REGRAS IMPORTANTES:
-1. Converta valores em Real (R$) para números decimais: "R$ 1.200,50" → 1200.50
-2. Converta datas brasileiras (DD/MM/YYYY) para ISO 8601
-3. Se a data não tiver hora, use 00:00:00
-4. Use apenas números para "amount", sem símbolos de moeda
-5. Se não encontrar algum campo, use null
-6. Retorne APENAS o JSON, sem texto adicional
-7. Se o documento estiver ilegível ou não for um documento financeiro, retorne: {"merchant": null, "date": null, "amount": 0, "category": null, "items": null}
-8. Para a categoria: Tente encaixar em uma das "Categorias disponíveis". Se não for possível, sugira uma categoria curta e descritiva (ex: "Alimentação", "Transporte", "Saúde").
+1. Converta R$ para números: "R$ 1.200,50" → 1200.50
+2. Datas DD/MM/YYYY → ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ)
+3. Se não tiver hora, use T00:00:00.000Z
+4. EXTRAIA TODAS as transações da fatura, não apenas algumas
+5. Inclua pagamentos (valores positivos com +) como transações negativas (crédito)
+6. Ignore linhas de total/subtotal, extraia apenas transações individuais
+7. Para categoria: use uma das disponíveis ou sugira uma apropriada
+8. Retorne APENAS o JSON, sem texto adicional
 
 Extraia os dados agora:`;
     }

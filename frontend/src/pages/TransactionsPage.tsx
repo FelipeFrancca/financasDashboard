@@ -30,6 +30,8 @@ import {
   useCreateTransaction,
   useUpdateTransaction,
   useDeleteTransaction,
+  useUpdateInstallmentGroup,
+  useDeleteManyTransactions,
 } from '../hooks/api/useTransactions';
 import { useCategories } from '../hooks/api/useCategories';
 import { useDashboardPermissions } from '../hooks/api/useDashboardPermissions';
@@ -51,6 +53,7 @@ export default function TransactionsPage() {
   });
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
 
   // Custom Hooks
   const { data: transactions = [], isLoading } = useTransactions(filters, dashboardId);
@@ -61,6 +64,8 @@ export default function TransactionsPage() {
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransaction();
   const deleteTransaction = useDeleteTransaction();
+  const updateInstallmentGroup = useUpdateInstallmentGroup();
+  const deleteManyTransactions = useDeleteManyTransactions();
 
   const handleNewTransaction = () => {
     setSelectedTransaction(null);
@@ -97,29 +102,86 @@ export default function TransactionsPage() {
     }
   };
 
-  const handleSaveTransaction = async (data: Partial<Transaction>) => {
+  const handleSaveTransaction = async (data: Partial<Transaction>, scope?: 'single' | 'remaining' | 'all') => {
     try {
       if (selectedTransaction) {
-        await updateTransaction.mutateAsync({ id: selectedTransaction.id, data });
-        showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!' });
+        // Check if this is an installment transaction with group and scope is not 'single'
+        const groupId = (selectedTransaction as any).installmentGroupId;
+        if (groupId && scope && scope !== 'single' && dashboardId) {
+          await updateInstallmentGroup.mutateAsync({ 
+            groupId, 
+            data, 
+            dashboardId, 
+            scope 
+          });
+          const count = scope === 'all' ? selectedTransaction.installmentTotal : 'pendentes';
+          showSuccess(`${count} parcelas atualizadas com sucesso.`, { title: 'Atualizado!' });
+        } else {
+          await updateTransaction.mutateAsync({ id: selectedTransaction.id, data });
+          showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!' });
+        }
       } else {
         await createTransaction.mutateAsync({ ...data, dashboardId } as any);
         showSuccess('Transação criada com sucesso.', { title: 'Criado!' });
       }
       setShowTransactionForm(false);
     } catch (error) {
-      showErrorWithRetry(error, () => handleSaveTransaction(data));
+      showErrorWithRetry(error, () => handleSaveTransaction(data, scope));
     }
   };
 
-  const handleExport = useCallback(() => {
-    if (!transactions.length) {
+  const handleThirdPartyUpdate = async (id: string, data: { isThirdParty: boolean; thirdPartyName?: string; thirdPartyDescription?: string }) => {
+    try {
+      await updateTransaction.mutateAsync({ id, data });
+      showSuccess(data.isThirdParty ? 'Terceiro adicionado.' : 'Terceiro removido.', { title: 'Atualizado!' });
+    } catch (error) {
+      showErrorWithRetry(error, () => handleThirdPartyUpdate(id, data));
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedTransactionIds.size === 0) return;
+
+    const result = await showConfirm(
+      `Deseja excluir ${selectedTransactionIds.size} transações selecionadas? Esta ação também excluirá parcelas relacionadas e itens das transações.`,
+      {
+        title: 'Confirmar exclusão em lote?',
+        icon: 'warning',
+        confirmButtonText: 'Sim, excluir todas',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: theme.palette.error.main,
+        cancelButtonColor: theme.palette.grey[500],
+      }
+    );
+
+    if (result.isConfirmed && dashboardId) {
+      try {
+        const idsArray = Array.from(selectedTransactionIds);
+        await deleteManyTransactions.mutateAsync({
+          ids: idsArray,
+          dashboardId,
+          includeInstallments: true,
+        });
+        setSelectedTransactionIds(new Set());
+        showSuccess(`${selectedTransactionIds.size} transações excluídas com sucesso.`, { title: 'Excluído!' });
+      } catch (error) {
+        showErrorWithRetry(error, handleDeleteSelected);
+      }
+    }
+  };
+
+  const handleExport = useCallback((selectedIds?: string[]) => {
+    const transactionsToExport = selectedIds && selectedIds.length > 0
+      ? transactions.filter(t => selectedIds.includes(t.id))
+      : transactions;
+
+    if (!transactionsToExport.length) {
       showWarning('Não há transações para exportar.', { title: 'Sem dados' });
       return;
     }
 
     const header = 'Data;Tipo;Fluxo;Categoria;Subcategoria;Descricao;Valor;MetodoPag;ParcelasTotal;ParcelaAtual;StatusParcela;Fonte;Observacao\n';
-    const rows = transactions.map(t => {
+    const rows = transactionsToExport.map(t => {
       const date = new Date(t.date).toLocaleDateString('pt-BR');
       return [
         date,
@@ -143,13 +205,17 @@ export default function TransactionsPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `transacoes_${new Date().toISOString().split('T')[0]}.csv`;
+    const suffix = selectedIds && selectedIds.length > 0 ? `_${selectedIds.length}_selecionadas` : '';
+    link.download = `transacoes${suffix}_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    showSuccess('Arquivo CSV baixado com sucesso.', { title: 'Exportado!' });
+    const msg = selectedIds && selectedIds.length > 0 
+      ? `${selectedIds.length} transações exportadas com sucesso.`
+      : 'Arquivo CSV baixado com sucesso.';
+    showSuccess(msg, { title: 'Exportado!' });
   }, [transactions]);
 
   const formatCurrency = (value: number) =>
@@ -343,6 +409,10 @@ export default function TransactionsPage() {
         onNew={handleNewTransaction}
         onExport={handleExport}
         canEdit={canEdit}
+        onThirdPartyUpdate={handleThirdPartyUpdate}
+        selectedIds={selectedTransactionIds}
+        onSelectionChange={setSelectedTransactionIds}
+        onDeleteSelected={handleDeleteSelected}
       />
 
       {/* Transaction Form Modal */}

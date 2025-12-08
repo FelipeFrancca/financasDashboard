@@ -16,9 +16,37 @@ export const transactionItemSchema = z.object({
 });
 
 /**
+ * Schema para transação individual extraída de uma fatura
+ */
+export const extractedTransactionSchema = z.object({
+    merchant: z.string().nullable(),
+    date: z.string().nullable(),
+    amount: z.number(),
+    category: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+    installmentInfo: z.string().nullable().optional(),
+    cardLastDigits: z.string().nullable().optional(),
+});
+
+/**
+ * Schema para metadados de fatura de cartão
+ */
+export const statementInfoSchema = z.object({
+    institution: z.string().nullable().optional(),
+    cardLastDigits: z.string().nullable().optional(),
+    dueDate: z.string().nullable().optional(),
+    totalAmount: z.number().nullable().optional(),
+    periodStart: z.string().nullable().optional(),
+    periodEnd: z.string().nullable().optional(),
+    holderName: z.string().nullable().optional(),
+});
+
+/**
  * Schema para o resultado da extração de dados financeiros
+ * Suporta tanto extração simples quanto multi-transação
  */
 export const extractionResultSchema = z.object({
+    // Campos para extração simples
     merchant: z.string().nullable().optional(),
     date: z.string().nullable().optional(),
     amount: z.number().nonnegative('Valor não pode ser negativo'),
@@ -27,6 +55,11 @@ export const extractionResultSchema = z.object({
     confidence: z.number().min(0).max(1),
     extractionMethod: z.enum(['regex', 'ai']),
     rawData: z.any().optional(),
+
+    // Campos para extração multi-transação
+    isMultiTransaction: z.boolean().optional(),
+    transactions: z.array(extractedTransactionSchema).optional(),
+    statementInfo: statementInfoSchema.optional(),
 });
 
 /**
@@ -48,6 +81,12 @@ export const fileUploadSchema = z.object({
 export type ExtractionResultValidated = z.infer<typeof extractionResultSchema>;
 
 /**
+ * Tipo inferido do schema de transação extraída
+ */
+export type ExtractedTransactionValidated = z.infer<typeof extractedTransactionSchema>;
+
+/**
  * Tipo inferido do schema de upload
  */
 export type FileUploadValidated = z.infer<typeof fileUploadSchema>;
+

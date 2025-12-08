@@ -64,6 +64,7 @@ model Transaction {
   installmentTotal  Int      @default(0)
   installmentNumber Int      @default(0)
   installmentStatus String   @default("N/A") // "N/A", "Paga", "Pendente"
+  installmentGroupId String?  // ID único para vincular todas as parcelas da mesma compra
   notes             String?
   isTemporary       Boolean  @default(false)
 
@@ -109,6 +110,7 @@ model Transaction {
   @@index([userId, category, date])
   @@index([deletedAt])
   @@index([isThirdParty])
+  @@index([installmentGroupId])
   @@map("transactions")
 }
 

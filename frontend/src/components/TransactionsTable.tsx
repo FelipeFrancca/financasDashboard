@@ -20,6 +20,12 @@ import {
   TablePagination,
   useTheme,
   Collapse,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Checkbox,
 } from '@mui/material';
 import {
   Edit,
@@ -29,6 +35,9 @@ import {
   Person,
   KeyboardArrowDown,
   KeyboardArrowUp,
+  PersonAddOutlined,
+  PersonRemove,
+  DeleteSweep,
 } from '@mui/icons-material';
 import { useResponsive } from '../hooks/useResponsive';
 import LoadingSkeleton from './LoadingSkeleton';
@@ -42,8 +51,12 @@ interface TransactionsTableProps {
   onEdit: (transaction: Transaction) => void;
   onDelete: (id: string) => void;
   onNew: () => void;
-  onExport: () => void;
+  onExport: (selectedIds?: string[]) => void;
   canEdit?: boolean;
+  onThirdPartyUpdate?: (id: string, data: { isThirdParty: boolean; thirdPartyName?: string; thirdPartyDescription?: string }) => Promise<void>;
+  selectedIds?: Set<string>;
+  onSelectionChange?: (ids: Set<string>) => void;
+  onDeleteSelected?: () => void;
 }
 
 export default function TransactionsTable({
@@ -54,12 +67,55 @@ export default function TransactionsTable({
   onNew,
   onExport,
   canEdit = true,
+  onThirdPartyUpdate,
+  selectedIds = new Set(),
+  onSelectionChange,
+  onDeleteSelected,
 }: TransactionsTableProps) {
   const theme = useTheme();
   const { isMobile } = useResponsive();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
+  
+  // Third party dialog state
+  const [thirdPartyDialogOpen, setThirdPartyDialogOpen] = useState(false);
+  const [selectedTransactionForThirdParty, setSelectedTransactionForThirdParty] = useState<Transaction | null>(null);
+  const [thirdPartyName, setThirdPartyName] = useState('');
+  const [thirdPartyDescription, setThirdPartyDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Selection handlers
+  const handleSelectAll = () => {
+    if (!onSelectionChange) return;
+    if (selectedIds.size === transactions.length) {
+      onSelectionChange(new Set());
+    } else {
+      onSelectionChange(new Set(transactions.map(t => t.id)));
+    }
+  };
+
+  const handleSelectOne = (id: string) => {
+    if (!onSelectionChange) return;
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    onSelectionChange(newSelected);
+  };
+
+  const handleExportClick = () => {
+    if (selectedIds.size > 0) {
+      onExport(Array.from(selectedIds));
+    } else {
+      onExport();
+    }
+  };
+
+  const isAllSelected = transactions.length > 0 && selectedIds.size === transactions.length;
+  const isIndeterminate = selectedIds.size > 0 && selectedIds.size < transactions.length;
 
   const toggleRow = (id: string) => {
     setOpenRows((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -70,6 +126,53 @@ export default function TransactionsTable({
 
   const formatDate = (date: string | Date) =>
     new Date(date).toLocaleDateString('pt-BR');
+
+  // Third party handlers
+  const handleThirdPartyClick = (transaction: Transaction) => {
+    setSelectedTransactionForThirdParty(transaction);
+    setThirdPartyName(transaction.thirdPartyName || '');
+    setThirdPartyDescription(transaction.thirdPartyDescription || '');
+    setThirdPartyDialogOpen(true);
+  };
+
+  const handleThirdPartyClose = () => {
+    setThirdPartyDialogOpen(false);
+    setSelectedTransactionForThirdParty(null);
+    setThirdPartyName('');
+    setThirdPartyDescription('');
+  };
+
+  const handleThirdPartySave = async () => {
+    if (!selectedTransactionForThirdParty || !onThirdPartyUpdate) return;
+    
+    setIsSubmitting(true);
+    try {
+      await onThirdPartyUpdate(selectedTransactionForThirdParty.id, {
+        isThirdParty: true,
+        thirdPartyName: thirdPartyName.trim() || undefined,
+        thirdPartyDescription: thirdPartyDescription.trim() || undefined,
+      });
+      handleThirdPartyClose();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleThirdPartyRemove = async () => {
+    if (!selectedTransactionForThirdParty || !onThirdPartyUpdate) return;
+    
+    setIsSubmitting(true);
+    try {
+      await onThirdPartyUpdate(selectedTransactionForThirdParty.id, {
+        isThirdParty: false,
+        thirdPartyName: undefined,
+        thirdPartyDescription: undefined,
+      });
+      handleThirdPartyClose();
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const handleChangePage = (_event: unknown, newPage: number) => {
     setPage(newPage);
@@ -97,9 +200,24 @@ export default function TransactionsTable({
           title="Transações"
           titleTypographyProps={{ variant: 'h6', fontWeight: 600 }}
           action={
-            <Stack direction="row" spacing={1}>
-              <Tooltip title="Exportar">
-                <IconButton onClick={onExport} size="small">
+            <Stack direction="row" spacing={1} alignItems="center">
+              {selectedIds.size > 0 && (
+                <Chip 
+                  label={`${selectedIds.size} selecionadas`} 
+                  size="small" 
+                  color="primary" 
+                  variant="outlined"
+                />
+              )}
+              {selectedIds.size > 0 && canEdit && onDeleteSelected && (
+                <Tooltip title={`Excluir ${selectedIds.size} selecionadas`}>
+                  <IconButton onClick={onDeleteSelected} color="error" size="small">
+                    <DeleteSweep />
+                  </IconButton>
+                </Tooltip>
+              )}
+              <Tooltip title={selectedIds.size > 0 ? `Exportar ${selectedIds.size} selecionadas` : "Exportar todas"}>
+                <IconButton onClick={handleExportClick} size="small">
                   <FileDownload />
                 </IconButton>
               </Tooltip>
@@ -127,7 +245,8 @@ export default function TransactionsTable({
                   key={transaction.id}
                   sx={{
                     border: 1,
-                    borderColor: 'divider',
+                    borderColor: selectedIds.has(transaction.id) ? 'primary.main' : 'divider',
+                    bgcolor: selectedIds.has(transaction.id) ? 'action.selected' : 'background.paper',
                     ...hoverLift,
                     animation: `fadeIn ${300 + index * 50}ms cubic-bezier(0.4, 0, 0.2, 1)`,
                     '@keyframes fadeIn': {
@@ -138,13 +257,23 @@ export default function TransactionsTable({
                 >
                   <CardContent sx={{ pb: 1 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
-                      <Box>
-                        <Typography variant="subtitle2" fontWeight={600}>
-                          {transaction.description}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {formatDate(transaction.date)}
-                        </Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1 }}>
+                        {onSelectionChange && (
+                          <Checkbox
+                            checked={selectedIds.has(transaction.id)}
+                            onChange={() => handleSelectOne(transaction.id)}
+                            size="small"
+                            sx={{ mt: -0.5, ml: -1 }}
+                          />
+                        )}
+                        <Box>
+                          <Typography variant="subtitle2" fontWeight={600}>
+                            {transaction.description}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatDate(transaction.date)}
+                          </Typography>
+                        </Box>
                       </Box>
                       <Chip
                         label={transaction.entryType}
@@ -211,6 +340,15 @@ export default function TransactionsTable({
                   <Box sx={{ display: 'flex', justifyContent: 'flex-end', p: 1, gap: 1 }}>
                     {canEdit && (
                       <>
+                        {onThirdPartyUpdate && (
+                          <IconButton 
+                            size="small" 
+                            onClick={() => handleThirdPartyClick(transaction)} 
+                            color={transaction.isThirdParty ? "primary" : "default"}
+                          >
+                            {transaction.isThirdParty ? <Person fontSize="small" /> : <PersonAddOutlined fontSize="small" />}
+                          </IconButton>
+                        )}
                         <IconButton size="small" onClick={() => onEdit(transaction)} color="primary">
                           <Edit fontSize="small" />
                         </IconButton>
@@ -248,9 +386,34 @@ export default function TransactionsTable({
         title="Transações Detalhadas"
         titleTypographyProps={{ variant: 'h6', fontWeight: 600 }}
         action={
-          <Box sx={{ display: 'flex', gap: 1 }}>
-            <Button startIcon={<FileDownload />} onClick={onExport} size="small" variant="outlined">
-              Exportar
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            {selectedIds.size > 0 && (
+              <Chip 
+                label={`${selectedIds.size} selecionadas`} 
+                size="small" 
+                color="primary" 
+                variant="outlined"
+                onDelete={() => onSelectionChange?.(new Set())}
+              />
+            )}
+            {selectedIds.size > 0 && canEdit && onDeleteSelected && (
+              <Button 
+                startIcon={<DeleteSweep />} 
+                onClick={onDeleteSelected} 
+                size="small" 
+                variant="outlined"
+                color="error"
+              >
+                Excluir ({selectedIds.size})
+              </Button>
+            )}
+            <Button 
+              startIcon={<FileDownload />} 
+              onClick={handleExportClick} 
+              size="small" 
+              variant="outlined"
+            >
+              {selectedIds.size > 0 ? `Exportar (${selectedIds.size})` : 'Exportar'}
             </Button>
             {canEdit && (
               <Button startIcon={<Add />} onClick={onNew} variant="contained">
@@ -265,6 +428,16 @@ export default function TransactionsTable({
           <Table>
             <TableHead>
               <TableRow>
+                {onSelectionChange && (
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      indeterminate={isIndeterminate}
+                      checked={isAllSelected}
+                      onChange={handleSelectAll}
+                      inputProps={{ 'aria-label': 'selecionar todas' }}
+                    />
+                  </TableCell>
+                )}
                 <TableCell />
                 <TableCell>Data</TableCell>
                 <TableCell>Tipo</TableCell>
@@ -278,7 +451,7 @@ export default function TransactionsTable({
             <TableBody>
               {paginatedTransactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} align="center" sx={{ py: 4 }}>
+                  <TableCell colSpan={onSelectionChange ? 10 : 9} align="center" sx={{ py: 4 }}>
                     <Typography variant="body2" color="text.secondary">
                       Nenhuma transação encontrada
                     </Typography>
@@ -294,10 +467,27 @@ export default function TransactionsTable({
                         '&:hover': {
                           backgroundColor: theme.palette.action.hover,
                         },
-                        backgroundColor: openRows[transaction.id] ? theme.palette.action.selected : 'inherit',
+                        backgroundColor: selectedIds.has(transaction.id) 
+                          ? theme.palette.action.selected 
+                          : openRows[transaction.id] 
+                            ? theme.palette.action.hover 
+                            : 'inherit',
                       }}
                       onClick={() => toggleRow(transaction.id)}
                     >
+                      {onSelectionChange && (
+                        <TableCell padding="checkbox">
+                          <Checkbox
+                            checked={selectedIds.has(transaction.id)}
+                            onChange={(e) => {
+                              e.stopPropagation();
+                              handleSelectOne(transaction.id);
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            inputProps={{ 'aria-label': `selecionar ${transaction.description}` }}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell>
                         <IconButton
                           aria-label="expand row"
@@ -367,6 +557,17 @@ export default function TransactionsTable({
                       <TableCell align="center">
                         {canEdit && (
                           <>
+                            {onThirdPartyUpdate && (
+                              <Tooltip title={transaction.isThirdParty ? `Terceiro: ${transaction.thirdPartyName || 'Sem nome'}` : "Marcar como terceiro"}>
+                                <IconButton 
+                                  size="small" 
+                                  onClick={(e) => { e.stopPropagation(); handleThirdPartyClick(transaction); }}
+                                  color={transaction.isThirdParty ? "primary" : "default"}
+                                >
+                                  {transaction.isThirdParty ? <Person fontSize="small" /> : <PersonAddOutlined fontSize="small" />}
+                                </IconButton>
+                              </Tooltip>
+                            )}
                             <Tooltip title="Editar">
                               <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit(transaction); }}>
                                 <Edit fontSize="small" />
@@ -419,6 +620,58 @@ export default function TransactionsTable({
           labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
         />
       </CardContent>
+
+      {/* Third Party Dialog */}
+      <Dialog open={thirdPartyDialogOpen} onClose={handleThirdPartyClose} maxWidth="xs" fullWidth>
+        <DialogTitle>
+          {selectedTransactionForThirdParty?.isThirdParty ? 'Editar Participação de Terceiro' : 'Adicionar Participação de Terceiro'}
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Transação: {selectedTransactionForThirdParty?.description}
+          </Typography>
+          <TextField
+            fullWidth
+            label="Nome do Terceiro"
+            value={thirdPartyName}
+            onChange={(e) => setThirdPartyName(e.target.value)}
+            placeholder="Ex: João, Maria..."
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            label="Descrição (opcional)"
+            value={thirdPartyDescription}
+            onChange={(e) => setThirdPartyDescription(e.target.value)}
+            placeholder="Ex: Compra dividida, empréstimo..."
+            multiline
+            rows={2}
+          />
+        </DialogContent>
+        <DialogActions>
+          {selectedTransactionForThirdParty?.isThirdParty && (
+            <Button 
+              onClick={handleThirdPartyRemove} 
+              color="error" 
+              disabled={isSubmitting}
+              startIcon={<PersonRemove />}
+            >
+              Remover
+            </Button>
+          )}
+          <Box sx={{ flex: 1 }} />
+          <Button onClick={handleThirdPartyClose} disabled={isSubmitting}>
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleThirdPartySave} 
+            variant="contained" 
+            disabled={isSubmitting}
+          >
+            Salvar
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Card>
   );
 }

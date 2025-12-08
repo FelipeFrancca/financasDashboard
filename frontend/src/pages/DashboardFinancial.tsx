@@ -22,7 +22,8 @@ import {
   useCreateTransaction,
   useUpdateTransaction,
   useDeleteTransaction,
-  useCreateManyTransactions
+  useCreateManyTransactions,
+  useUpdateInstallmentGroup
 } from '../hooks/api/useTransactions';
 
 export default function DashboardFinancial() {
@@ -41,6 +42,7 @@ export default function DashboardFinancial() {
   const updateTransaction = useUpdateTransaction();
   const deleteTransaction = useDeleteTransaction();
   const createManyTransactions = useCreateManyTransactions();
+  const updateInstallmentGroup = useUpdateInstallmentGroup();
 
   const handleNewTransaction = () => {
     setSelectedTransaction(null);
@@ -77,21 +79,43 @@ export default function DashboardFinancial() {
     }
   };
 
-  const handleSaveTransaction = async (data: Partial<Transaction>) => {
+  const handleSaveTransaction = async (data: Partial<Transaction>, scope?: 'single' | 'remaining' | 'all') => {
     try {
       // Ensure dashboardId is included
       const transactionData = { ...data, dashboardId };
       
       if (selectedTransaction) {
-        await updateTransaction.mutateAsync({ id: selectedTransaction.id, data: transactionData });
-        showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!' });
+        // Check if this is an installment transaction with group and scope is not 'single'
+        const groupId = (selectedTransaction as any).installmentGroupId;
+        if (groupId && scope && scope !== 'single' && dashboardId) {
+          await updateInstallmentGroup.mutateAsync({ 
+            groupId, 
+            data: transactionData, 
+            dashboardId, 
+            scope 
+          });
+          const count = scope === 'all' ? selectedTransaction.installmentTotal : 'pendentes';
+          showSuccess(`${count} parcelas atualizadas com sucesso.`, { title: 'Atualizado!' });
+        } else {
+          await updateTransaction.mutateAsync({ id: selectedTransaction.id, data: transactionData });
+          showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!' });
+        }
       } else {
         await createTransaction.mutateAsync(transactionData as any);
         showSuccess('Transação criada com sucesso.', { title: 'Criado!' });
       }
       setShowTransactionForm(false);
     } catch (error) {
-      showErrorWithRetry(error, () => handleSaveTransaction(data));
+      showErrorWithRetry(error, () => handleSaveTransaction(data, scope));
+    }
+  };
+
+  const handleThirdPartyUpdate = async (id: string, data: { isThirdParty: boolean; thirdPartyName?: string; thirdPartyDescription?: string }) => {
+    try {
+      await updateTransaction.mutateAsync({ id, data });
+      showSuccess(data.isThirdParty ? 'Terceiro adicionado.' : 'Terceiro removido.', { title: 'Atualizado!' });
+    } catch (error) {
+      showErrorWithRetry(error, () => handleThirdPartyUpdate(id, data));
     }
   };
 
@@ -230,6 +254,7 @@ export default function DashboardFinancial() {
         onDelete={handleDeleteTransaction}
         onNew={handleNewTransaction}
         onExport={handleExport}
+        onThirdPartyUpdate={handleThirdPartyUpdate}
       />
 
       {/* Modais */}

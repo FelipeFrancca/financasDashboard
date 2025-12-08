@@ -14,6 +14,8 @@ import {
   useTheme,
   Tooltip,
   IconButton,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
 import {
   FilterList,
@@ -21,9 +23,17 @@ import {
   Clear,
   TuneRounded,
   CalendarMonth,
+  ChevronLeft,
+  ChevronRight,
 } from '@mui/icons-material';
 import { fadeIn } from '../utils/animations';
 import type { TransactionFilters, Transaction, Account } from '../types';
+
+// Nomes dos meses em português
+const MONTH_NAMES = [
+  'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+];
 
 interface FiltersCardProps {
   filters: TransactionFilters;
@@ -36,6 +46,11 @@ interface FiltersCardProps {
 export default function FiltersCard({ filters, onFiltersChange, transactions, accounts = [], categories: apiCategories = [] }: FiltersCardProps) {
   const theme = useTheme();
   const [expandedAccordion, setExpandedAccordion] = useState<boolean>(false);
+  
+  // Estado para mês e ano selecionados
+  const now = new Date();
+  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth());
+  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
 
   const handleChange = (field: keyof TransactionFilters, value: string) => {
     onFiltersChange({ ...filters, [field]: value });
@@ -44,6 +59,57 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
   const handleReset = () => {
     onFiltersChange({});
     setExpandedAccordion(false);
+    // Reset para mês atual
+    setSelectedMonth(now.getMonth());
+    setSelectedYear(now.getFullYear());
+  };
+
+  // Função para aplicar filtro de mês
+  const applyMonthFilter = (month: number, year: number) => {
+    const startDate = new Date(year, month, 1);
+    const endDate = new Date(year, month + 1, 0); // Último dia do mês
+    
+    onFiltersChange({
+      ...filters,
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+    });
+  };
+
+  // Handler para mudança de mês
+  const handleMonthChange = (newMonth: number) => {
+    setSelectedMonth(newMonth);
+    applyMonthFilter(newMonth, selectedYear);
+  };
+
+  // Handler para navegar entre meses
+  const handlePreviousMonth = () => {
+    let newMonth = selectedMonth - 1;
+    let newYear = selectedYear;
+    if (newMonth < 0) {
+      newMonth = 11;
+      newYear--;
+    }
+    setSelectedMonth(newMonth);
+    setSelectedYear(newYear);
+    applyMonthFilter(newMonth, newYear);
+  };
+
+  const handleNextMonth = () => {
+    let newMonth = selectedMonth + 1;
+    let newYear = selectedYear;
+    if (newMonth > 11) {
+      newMonth = 0;
+      newYear++;
+    }
+    setSelectedMonth(newMonth);
+    setSelectedYear(newYear);
+    applyMonthFilter(newMonth, newYear);
+  };
+
+  const handleYearChange = (newYear: number) => {
+    setSelectedYear(newYear);
+    applyMonthFilter(selectedMonth, newYear);
   };
 
   const applyBillingCycle = () => {
@@ -52,11 +118,7 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
     const account = accounts.find(a => a.id === filters.accountId);
     if (!account || account.type !== 'CREDIT_CARD' || !account.closingDay || !account.dueDay) return;
 
-    const now = new Date();
     const currentDay = now.getDate();
-    
-    // Se hoje é antes do fechamento, estamos na fatura atual (que fecha neste mês)
-    // Se hoje é depois do fechamento, estamos na próxima fatura (que fecha no próximo mês)
     
     let targetMonth = now.getMonth();
     let targetYear = now.getFullYear();
@@ -69,10 +131,7 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
       }
     }
 
-    // Data de fechamento da fatura alvo
     const closingDate = new Date(targetYear, targetMonth, account.closingDay);
-    
-    // Data de início da fatura (dia seguinte ao fechamento anterior)
     const startDate = new Date(closingDate);
     startDate.setMonth(startDate.getMonth() - 1);
     startDate.setDate(startDate.getDate() + 1);
@@ -88,7 +147,6 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
   const showBillingCycleOption = selectedAccount?.type === 'CREDIT_CARD' && selectedAccount?.closingDay;
 
   // Extrair categorias e instituições únicas
-  // Se apiCategories for fornecido, usa ele para extrair nomes. Caso contrário, fallback para transações.
   const categories = apiCategories.length > 0 
     ? apiCategories.map((c: any) => c.name).sort()
     : Array.from(new Set(transactions.map(t => t.category))).sort();
@@ -101,8 +159,13 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
     filters.institution ||
     filters.minAmount ||
     filters.search ||
-    filters.accountId
+    filters.accountId ||
+    filters.startDate ||
+    filters.endDate
   );
+
+  // Anos disponíveis para seleção (5 anos para trás e 1 para frente)
+  const availableYears = Array.from({ length: 7 }, (_, i) => now.getFullYear() - 5 + i);
 
   return (
     <Card id="filters-section" sx={{ ...fadeIn, scrollMarginTop: '100px' }}>
@@ -128,50 +191,105 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
         }
       />
       <CardContent>
-        {/* Filtros Básicos */}
+        {/* Seletor de Mês Principal */}
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 2 }}>
+            <IconButton onClick={handlePreviousMonth} size="small">
+              <ChevronLeft />
+            </IconButton>
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 1,
+              px: 2,
+              py: 0.5,
+              borderRadius: 2,
+              bgcolor: theme.palette.mode === 'dark' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(124, 58, 237, 0.08)',
+            }}>
+              <TextField
+                select
+                size="small"
+                value={selectedMonth}
+                onChange={(e) => handleMonthChange(Number(e.target.value))}
+                variant="standard"
+                sx={{ 
+                  minWidth: 120,
+                  '& .MuiInput-underline:before': { borderBottom: 'none' },
+                  '& .MuiInput-underline:hover:before': { borderBottom: 'none' },
+                  '& .MuiInput-underline:after': { borderBottom: 'none' },
+                  '& .MuiSelect-select': { 
+                    fontWeight: 600, 
+                    fontSize: '1.1rem',
+                    textAlign: 'center',
+                  },
+                }}
+              >
+                {MONTH_NAMES.map((name, index) => (
+                  <MenuItem key={index} value={index}>{name}</MenuItem>
+                ))}
+              </TextField>
+              <TextField
+                select
+                size="small"
+                value={selectedYear}
+                onChange={(e) => handleYearChange(Number(e.target.value))}
+                variant="standard"
+                sx={{ 
+                  minWidth: 80,
+                  '& .MuiInput-underline:before': { borderBottom: 'none' },
+                  '& .MuiInput-underline:hover:before': { borderBottom: 'none' },
+                  '& .MuiInput-underline:after': { borderBottom: 'none' },
+                  '& .MuiSelect-select': { 
+                    fontWeight: 600, 
+                    fontSize: '1.1rem',
+                  },
+                }}
+              >
+                {availableYears.map((year) => (
+                  <MenuItem key={year} value={year}>{year}</MenuItem>
+                ))}
+              </TextField>
+            </Box>
+            <IconButton onClick={handleNextMonth} size="small">
+              <ChevronRight />
+            </IconButton>
+          </Box>
+          
+          {/* Quick month buttons for mobile */}
+          <Box sx={{ 
+            display: { xs: 'none', sm: 'flex' }, 
+            justifyContent: 'center', 
+            flexWrap: 'wrap',
+            gap: 0.5,
+          }}>
+            <ToggleButtonGroup
+              value={selectedMonth}
+              exclusive
+              onChange={(_, value) => value !== null && handleMonthChange(value)}
+              size="small"
+              sx={{ flexWrap: 'wrap', justifyContent: 'center' }}
+            >
+              {MONTH_NAMES.map((name, index) => (
+                <ToggleButton 
+                  key={index} 
+                  value={index}
+                  sx={{ 
+                    px: 1.5, 
+                    py: 0.5,
+                    fontSize: '0.75rem',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {name.substring(0, 3)}
+                </ToggleButton>
+              ))}
+            </ToggleButtonGroup>
+          </Box>
+        </Box>
+
+        {/* Filtros Básicos (sem datas agora) */}
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <TextField
-                fullWidth
-                label="Data Inicial"
-                type="date"
-                value={filters.startDate || ''}
-                onChange={(e) => handleChange('startDate', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-              />
-            </Box>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <TextField
-                fullWidth
-                label="Data Final"
-                type="date"
-                value={filters.endDate || ''}
-                onChange={(e) => handleChange('endDate', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-              />
-              {showBillingCycleOption && (
-                <Tooltip title="Aplicar período da fatura atual">
-                  <IconButton 
-                    onClick={applyBillingCycle}
-                    color="primary"
-                    sx={{ 
-                      border: '1px solid', 
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      height: 56,
-                      width: 56,
-                    }}
-                  >
-                    <CalendarMonth />
-                  </IconButton>
-                </Tooltip>
-              )}
-            </Box>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
+          <Grid item xs={12} sm={6} md={4}>
             <TextField
               fullWidth
               select
@@ -184,19 +302,28 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
               <MenuItem value="Despesa">Despesa</MenuItem>
             </TextField>
           </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                select
-                label="Propriedade"
-                value={filters.ownership || 'all'}
-                onChange={(e) => handleChange('ownership', e.target.value)}
-              >
-                <MenuItem value="all">Todas</MenuItem>
-                <MenuItem value="client">Minhas</MenuItem>
-                <MenuItem value="thirdParty">Terceiros</MenuItem>
-              </TextField>
-            </Grid>
+          <Grid item xs={12} sm={6} md={4}>
+            <TextField
+              fullWidth
+              select
+              label="Propriedade"
+              value={filters.ownership || 'all'}
+              onChange={(e) => handleChange('ownership', e.target.value)}
+            >
+              <MenuItem value="all">Todas</MenuItem>
+              <MenuItem value="client">Minhas</MenuItem>
+              <MenuItem value="thirdParty">Terceiros</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} sm={6} md={4}>
+            <TextField
+              fullWidth
+              label="Buscar"
+              placeholder="Descrição, categoria..."
+              value={filters.search || ''}
+              onChange={(e) => handleChange('search', e.target.value)}
+            />
+          </Grid>
         </Grid>
 
         {/* Filtros Avançados - Accordion */}
@@ -240,6 +367,48 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
           </AccordionSummary>
           <AccordionDetails>
             <Grid container spacing={2}>
+              {/* Datas customizadas */}
+              <Grid item xs={12} sm={6} md={3}>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="Data Inicial"
+                    type="date"
+                    value={filters.startDate || ''}
+                    onChange={(e) => handleChange('startDate', e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    size="small"
+                  />
+                </Box>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="Data Final"
+                    type="date"
+                    value={filters.endDate || ''}
+                    onChange={(e) => handleChange('endDate', e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    size="small"
+                  />
+                  {showBillingCycleOption && (
+                    <Tooltip title="Aplicar período da fatura atual">
+                      <IconButton 
+                        onClick={applyBillingCycle}
+                        color="primary"
+                        sx={{ 
+                          border: '1px solid', 
+                          borderColor: 'divider',
+                          borderRadius: 1,
+                        }}
+                      >
+                        <CalendarMonth />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                </Box>
+              </Grid>
               <Grid item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
@@ -247,6 +416,7 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
                   label="Conta"
                   value={filters.accountId || ''}
                   onChange={(e) => handleChange('accountId', e.target.value)}
+                  size="small"
                 >
                   <MenuItem value="">Todas</MenuItem>
                   {accounts.map((acc) => (
@@ -263,6 +433,7 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
                   label="Categoria"
                   value={filters.category || ''}
                   onChange={(e) => handleChange('category', e.target.value)}
+                  size="small"
                 >
                   <MenuItem value="">Todas</MenuItem>
                   {categories.map((cat) => (
@@ -277,6 +448,7 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
                   label="Instituição"
                   value={filters.institution || ''}
                   onChange={(e) => handleChange('institution', e.target.value)}
+                  size="small"
                 >
                   <MenuItem value="">Todas</MenuItem>
                   {institutions.map((inst) => (
@@ -292,15 +464,7 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
                   value={filters.minAmount || ''}
                   onChange={(e) => handleChange('minAmount', e.target.value)}
                   InputProps={{ startAdornment: 'R$' }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <TextField
-                  fullWidth
-                  label="Buscar"
-                  placeholder="Descrição, categoria..."
-                  value={filters.search || ''}
-                  onChange={(e) => handleChange('search', e.target.value)}
+                  size="small"
                 />
               </Grid>
               <Grid item xs={12} sm={6} md={3}>
@@ -310,6 +474,7 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
                   label="Fluxo"
                   value={filters.flowType || ''}
                   onChange={(e) => handleChange('flowType', e.target.value)}
+                  size="small"
                 >
                   <MenuItem value="">Todos</MenuItem>
                   <MenuItem value="Fixa">Fixa</MenuItem>

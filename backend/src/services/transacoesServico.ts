@@ -230,4 +230,168 @@ export async function getStatsSummary(filters: TransactionFilters = {}, dashboar
   };
 }
 
+/**
+ * Busca todas as transações de um grupo de parcelamento
+ */
+export async function getInstallmentGroup(groupId: string, dashboardId: string, userId: string): Promise<Transaction[]> {
+  const { checkPermission } = await import('./paineisServico');
+  await checkPermission(userId, dashboardId);
+
+  return prisma.transaction.findMany({
+    where: {
+      installmentGroupId: groupId,
+      dashboardId,
+      deletedAt: null
+    },
+    orderBy: { installmentNumber: 'asc' },
+    include: { items: true },
+  });
+}
+
+/**
+ * Atualiza todas as transações de um grupo de parcelamento
+ * @param groupId ID do grupo de parcelas
+ * @param data Dados a serem atualizados em todas as parcelas
+ * @param scope 'all' = todas, 'remaining' = apenas parcelas pendentes, 'single' = não propaga
+ */
+export async function updateInstallmentGroup(
+  groupId: string,
+  data: any,
+  dashboardId: string,
+  userId: string,
+  scope: 'all' | 'remaining' | 'single' = 'all'
+): Promise<{ count: number; transactions: Transaction[] }> {
+  const { checkPermission } = await import('./paineisServico');
+  await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
+  // Build where clause based on scope
+  const where: any = {
+    installmentGroupId: groupId,
+    dashboardId,
+    deletedAt: null
+  };
+
+  if (scope === 'remaining') {
+    where.installmentStatus = 'Pendente';
+  }
+
+  // Extract items and installment-specific fields that shouldn't be synced
+  const { items, date, installmentNumber, installmentStatus, ...syncData } = data;
+
+  // Fields that should be synced across all installments
+  const updateData: any = {};
+
+  // Sync these fields if provided
+  if (syncData.description !== undefined) updateData.description = syncData.description;
+  if (syncData.amount !== undefined) updateData.amount = syncData.amount;
+  if (syncData.category !== undefined) updateData.category = syncData.category;
+  if (syncData.subcategory !== undefined) updateData.subcategory = syncData.subcategory;
+  if (syncData.paymentMethod !== undefined) updateData.paymentMethod = syncData.paymentMethod;
+  if (syncData.institution !== undefined) updateData.institution = syncData.institution;
+  if (syncData.cardBrand !== undefined) updateData.cardBrand = syncData.cardBrand;
+  if (syncData.notes !== undefined) updateData.notes = syncData.notes;
+  if (syncData.isThirdParty !== undefined) updateData.isThirdParty = syncData.isThirdParty;
+  if (syncData.thirdPartyName !== undefined) updateData.thirdPartyName = syncData.thirdPartyName;
+  if (syncData.thirdPartyDescription !== undefined) updateData.thirdPartyDescription = syncData.thirdPartyDescription;
+
+  // Update all matching transactions
+  const result = await prisma.transaction.updateMany({
+    where,
+    data: updateData,
+  });
+
+  // Fetch updated transactions
+  const transactions = await prisma.transaction.findMany({
+    where: { installmentGroupId: groupId, dashboardId, deletedAt: null },
+    orderBy: { installmentNumber: 'asc' },
+    include: { items: true },
+  });
+
+  return { count: result.count, transactions };
+}
+
+/**
+ * Deleta múltiplas transações em lote, incluindo parcelas relacionadas e itens
+ * @param ids Array de IDs de transações a serem deletadas
+ * @param dashboardId ID do dashboard
+ * @param userId ID do usuário
+ * @param includeInstallments Se true, deleta também outras parcelas do mesmo grupo
+ */
+export async function deleteManyTransactions(
+  ids: string[],
+  dashboardId: string,
+  userId: string,
+  includeInstallments: boolean = true
+): Promise<{ count: number }> {
+  const { checkPermission } = await import('./paineisServico');
+  await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
+  // Buscar todas as transações para pegar os installmentGroupIds
+  const transactions = await prisma.transaction.findMany({
+    where: {
+      id: { in: ids },
+      dashboardId,
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      installmentGroupId: true,
+    },
+  });
+
+  // Coletar todos os IDs a serem deletados
+  let allIdsToDelete = new Set(ids);
+
+  if (includeInstallments) {
+    // Buscar IDs de grupos de parcelas únicos
+    const groupIds = transactions
+      .filter((t) => t.installmentGroupId)
+      .map((t) => t.installmentGroupId as string);
+
+    const uniqueGroupIds = [...new Set(groupIds)];
+
+    if (uniqueGroupIds.length > 0) {
+      // Buscar todas as parcelas dos grupos
+      const installmentTransactions = await prisma.transaction.findMany({
+        where: {
+          installmentGroupId: { in: uniqueGroupIds },
+          dashboardId,
+          deletedAt: null,
+        },
+        select: { id: true },
+      });
+
+      installmentTransactions.forEach((t) => allIdsToDelete.add(t.id));
+    }
+  }
+
+  const idsArray = Array.from(allIdsToDelete);
+
+  // Usar transaction do Prisma para garantir atomicidade
+  const result = await prisma.$transaction(async (tx) => {
+    // Primeiro deletar os items das transações
+    await tx.transactionItem.deleteMany({
+      where: {
+        transactionId: { in: idsArray },
+      },
+    });
+
+    // Fazer soft delete das transações
+    const updateResult = await tx.transaction.updateMany({
+      where: {
+        id: { in: idsArray },
+        dashboardId,
+      },
+      data: {
+        deletedAt: new Date(),
+      },
+    });
+
+    return updateResult;
+  });
+
+  return { count: result.count };
+}
+
 export { prisma };
+

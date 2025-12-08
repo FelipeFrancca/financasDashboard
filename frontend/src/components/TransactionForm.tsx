@@ -13,20 +13,64 @@ import {
   Switch,
   Collapse,
   Box,
-  Typography
+  Typography,
+  Autocomplete,
+  createFilterOptions,
+  CircularProgress,
+  Radio,
+  RadioGroup,
+  FormControl,
 } from '@mui/material';
 import Person from '@mui/icons-material/Person';
 import { useForm, Controller } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
-import { useCategories } from '../hooks/api/useCategories';
+import { useCategories, useCreateCategory } from '../hooks/api/useCategories';
 import TransactionItemsEditor from './TransactionItemsEditor';
 import type { Transaction, TransactionItem } from '../types';
+
+// Filter options for Autocomplete with create option
+const filter = createFilterOptions<CategoryOption>();
+
+interface CategoryOption {
+  name: string;
+  id?: string;
+  inputValue?: string;
+  isNew?: boolean;
+}
+
+/**
+ * Simple fuzzy match - checks if query words appear in target
+ */
+function fuzzyMatch(target: string, query: string): boolean {
+  const targetLower = target.toLowerCase();
+  const queryWords = query.toLowerCase().split(/\s+/);
+  return queryWords.every(word => targetLower.includes(word));
+}
+
+/**
+ * Format number to BRL currency display: 1234.56 -> "1.234,56"
+ */
+function formatBRLCurrency(value: number | string): string {
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  if (isNaN(num)) return '';
+  return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * Parse BRL currency input: "1.234,56" -> 1234.56
+ */
+function parseBRLCurrency(input: string): number {
+  // Remove dots (thousands separator) and replace comma with dot
+  const cleaned = input.replace(/\./g, '').replace(',', '.');
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? 0 : num;
+}
 
 interface TransactionFormProps {
   open: boolean;
   transaction: Transaction | null;
   onClose: () => void;
-  onSave: (data: Partial<Transaction>) => Promise<void>;
+  onSave: (data: Partial<Transaction>, scope?: 'single' | 'remaining' | 'all') => Promise<void>;
 }
 
 interface TransactionFormData {
@@ -74,6 +118,7 @@ const defaultValues: TransactionFormData = {
 export default function TransactionForm({ open, transaction, onClose, onSave }: TransactionFormProps) {
   const { dashboardId } = useParams<{ dashboardId: string }>();
   const { data: categories = [] } = useCategories(dashboardId || '');
+  const createCategory = useCreateCategory();
 
   const { control, handleSubmit, reset, watch, setValue } = useForm<TransactionFormData>({
     defaultValues
@@ -84,12 +129,25 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
   
   // State for editable items
   const [editableItems, setEditableItems] = useState<TransactionItem[]>([]);
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  
+  // State for installment scope dialog
+  const [showInstallmentScopeDialog, setShowInstallmentScopeDialog] = useState(false);
+  const [installmentScope, setInstallmentScope] = useState<'single' | 'remaining' | 'all'>('single');
+  const [pendingFormData, setPendingFormData] = useState<TransactionFormData | null>(null);
 
-  // Filter categories based on entry type
-  const filteredCategories = categories.filter((cat: any) => {
-    const type = cat.type === 'INCOME' ? 'Receita' : 'Despesa';
-    return type === entryType;
-  });
+  // Check if this is an installment transaction with groupId
+  const isInstallmentWithGroup = transaction && 
+    transaction.installmentTotal > 1 && 
+    (transaction as any).installmentGroupId;
+
+  // Filter categories based on entry type and convert to CategoryOption format
+  const categoryOptions: CategoryOption[] = categories
+    .filter((cat: any) => {
+      const type = cat.type === 'INCOME' ? 'Receita' : 'Despesa';
+      return type === entryType;
+    })
+    .map((cat: any) => ({ name: cat.name, id: cat.id }));
 
   useEffect(() => {
     if (open) {
@@ -131,21 +189,89 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
   }, [open, transaction, reset]);
 
   const onSubmit = async (data: TransactionFormData) => {
+    // If editing an installment transaction with groupId, show scope dialog
+    if (isInstallmentWithGroup) {
+      setPendingFormData(data);
+      setShowInstallmentScopeDialog(true);
+      return;
+    }
+    
+    // Normal save for non-installment transactions
     await onSave({
       ...data,
       amount: Number(data.amount),
       installmentTotal: Number(data.installmentTotal),
       installmentNumber: Number(data.installmentNumber),
-      // Include edited items
       items: editableItems.length > 0 ? editableItems : undefined,
     });
     onClose();
   };
 
+  const handleInstallmentScopeSave = async () => {
+    if (!pendingFormData) return;
+    
+    await onSave({
+      ...pendingFormData,
+      amount: Number(pendingFormData.amount),
+      installmentTotal: Number(pendingFormData.installmentTotal),
+      installmentNumber: Number(pendingFormData.installmentNumber),
+      items: editableItems.length > 0 ? editableItems : undefined,
+    }, installmentScope);
+    
+    setShowInstallmentScopeDialog(false);
+    setPendingFormData(null);
+    onClose();
+  };
+
+  const handleInstallmentScopeCancel = () => {
+    setShowInstallmentScopeDialog(false);
+    setPendingFormData(null);
+  };
+
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
-      <form onSubmit={handleSubmit(onSubmit)}>
-        <DialogTitle>{transaction ? 'Editar Transação' : 'Nova Transação'}</DialogTitle>
+    <>
+      {/* Dialog para escolher escopo de edição de parcelas */}
+      <Dialog open={showInstallmentScopeDialog} onClose={handleInstallmentScopeCancel}>
+        <DialogTitle>Editar Parcelas</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Esta transação faz parte de um grupo de {transaction?.installmentTotal} parcelas.
+            Como deseja aplicar as alterações?
+          </Typography>
+          <FormControl component="fieldset">
+            <RadioGroup
+              value={installmentScope}
+              onChange={(e) => setInstallmentScope(e.target.value as 'single' | 'remaining' | 'all')}
+            >
+              <FormControlLabel 
+                value="single" 
+                control={<Radio />} 
+                label="Apenas esta parcela" 
+              />
+              <FormControlLabel 
+                value="remaining" 
+                control={<Radio />} 
+                label="Todas as parcelas pendentes" 
+              />
+              <FormControlLabel 
+                value="all" 
+                control={<Radio />} 
+                label="Todas as parcelas do grupo" 
+              />
+            </RadioGroup>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleInstallmentScopeCancel}>Cancelar</Button>
+          <Button onClick={handleInstallmentScopeSave} variant="contained">
+            Aplicar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
+        <form onSubmit={handleSubmit(onSubmit)}>
+          <DialogTitle>{transaction ? 'Editar Transação' : 'Nova Transação'}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             {/* Linha 1: Tipo e Fluxo */}
@@ -206,20 +332,32 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
               <Controller
                 name="amount"
                 control={control}
-                rules={{ required: 'Valor é obrigatório', min: { value: 0.01, message: 'Valor deve ser maior que zero' } }}
-                render={({ field, fieldState: { error } }) => (
-                  <TextField
-                    {...field}
-                    fullWidth
-                    type="number"
-                    label="Valor"
-                    InputProps={{
-                      startAdornment: <InputAdornment position="start">R$</InputAdornment>,
-                    }}
-                    error={!!error}
-                    helperText={error?.message}
-                  />
-                )}
+                rules={{ required: 'Valor é obrigatório', validate: v => (typeof v === 'number' ? v : parseBRLCurrency(String(v))) > 0 || 'Valor deve ser maior que zero' }}
+                render={({ field, fieldState: { error } }) => {
+                  // Store display value separately for formatting
+                  const displayValue = field.value ? formatBRLCurrency(field.value) : '';
+                  
+                  return (
+                    <TextField
+                      fullWidth
+                      label="Valor"
+                      value={displayValue}
+                      onChange={(e) => {
+                        const input = e.target.value;
+                        // Allow only numbers, dots and comma
+                        const cleaned = input.replace(/[^\d.,]/g, '');
+                        const numericValue = parseBRLCurrency(cleaned);
+                        field.onChange(numericValue);
+                      }}
+                      InputProps={{
+                        startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                      }}
+                      placeholder="0,00"
+                      error={!!error}
+                      helperText={error?.message}
+                    />
+                  );
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -248,25 +386,104 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
                 control={control}
                 rules={{ required: 'Categoria é obrigatória' }}
                 render={({ field, fieldState: { error } }) => (
-                  <TextField
-                    {...field}
-                    select
-                    fullWidth
-                    label="Categoria"
-                    error={!!error}
-                    helperText={error?.message}
-                  >
-                    {filteredCategories.map((cat: any) => (
-                      <MenuItem key={cat.id} value={cat.name}>
-                        {cat.name}
-                      </MenuItem>
-                    ))}
-                    {filteredCategories.length === 0 && (
-                      <MenuItem disabled>
-                        Nenhuma categoria de {entryType.toLowerCase()} encontrada
-                      </MenuItem>
+                  <Autocomplete
+                    freeSolo
+                    selectOnFocus
+                    clearOnBlur
+                    handleHomeEndKeys
+                    loading={creatingCategory}
+                    options={categoryOptions}
+                    getOptionLabel={(option) => {
+                      if (typeof option === 'string') return option;
+                      if (option.inputValue) return option.inputValue;
+                      return option.name;
+                    }}
+                    value={categoryOptions.find(c => c.name === field.value) || (field.value ? { name: field.value } : null)}
+                    onChange={async (_, newValue) => {
+                      if (typeof newValue === 'string') {
+                        field.onChange(newValue);
+                      } else if (newValue?.isNew && newValue.inputValue) {
+                        // Create new category
+                        setCreatingCategory(true);
+                        try {
+                          await createCategory.mutateAsync({
+                            data: {
+                              name: newValue.inputValue,
+                              type: entryType === 'Receita' ? 'INCOME' : 'EXPENSE',
+                            },
+                            dashboardId: dashboardId!,
+                          });
+                          field.onChange(newValue.inputValue);
+                        } catch {
+                          // Handle error silently, keep input value
+                          field.onChange(newValue.inputValue);
+                        } finally {
+                          setCreatingCategory(false);
+                        }
+                      } else if (newValue) {
+                        field.onChange(newValue.name);
+                      } else {
+                        field.onChange('');
+                      }
+                    }}
+                    filterOptions={(options, params) => {
+                      const filtered = filter(options, params);
+                      const { inputValue } = params;
+                      
+                      // Fuzzy matching - show options that contain any word from input
+                      if (inputValue) {
+                        const fuzzyFiltered = options.filter(opt => 
+                          fuzzyMatch(opt.name, inputValue)
+                        );
+                        // Merge fuzzy results with exact filter results
+                        fuzzyFiltered.forEach(f => {
+                          if (!filtered.find(x => x.name === f.name)) {
+                            filtered.push(f);
+                          }
+                        });
+                      }
+                      
+                      // Add "Create new" option if no exact match
+                      const isExisting = options.some(opt => 
+                        opt.name.toLowerCase() === inputValue.toLowerCase()
+                      );
+                      if (inputValue && !isExisting) {
+                        filtered.push({
+                          inputValue,
+                          name: `➕ Criar "${inputValue}"`,
+                          isNew: true,
+                        });
+                      }
+                      
+                      return filtered;
+                    }}
+                    renderOption={(props, option) => (
+                      <li {...props} key={option.isNew ? `new-${option.inputValue}` : option.id || option.name}>
+                        {option.isNew ? (
+                          <Typography color="primary">{option.name}</Typography>
+                        ) : (
+                          option.name
+                        )}
+                      </li>
                     )}
-                  </TextField>
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Categoria"
+                        error={!!error}
+                        helperText={error?.message || 'Digite para buscar ou criar nova'}
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {creatingCategory && <CircularProgress color="inherit" size={20} />}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                      />
+                    )}
+                  />
                 )}
               />
             </Grid>
@@ -410,5 +627,6 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
         </DialogActions>
       </form>
     </Dialog>
+    </>
   );
 }

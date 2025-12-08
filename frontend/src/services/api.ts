@@ -163,6 +163,33 @@ export const transactionService = {
     const { data } = await api.get('/transactions/stats/summary', { params: filters });
     return data.data;
   },
+
+  deleteMany: async (ids: string[], dashboardId: string, includeInstallments: boolean = true): Promise<{ count: number }> => {
+    const { data } = await api.delete('/transactions/bulk', {
+      data: { dashboardId, ids, includeInstallments }
+    });
+    return data.data;
+  },
+
+  // Installment group operations
+  getInstallmentGroup: async (groupId: string, dashboardId: string): Promise<Transaction[]> => {
+    const { data } = await api.get(`/transactions/installment-group/${groupId}`, { params: { dashboardId } });
+    return data.data;
+  },
+
+  updateInstallmentGroup: async (
+    groupId: string,
+    updates: Partial<Transaction>,
+    dashboardId: string,
+    scope: 'single' | 'remaining' | 'all' = 'all'
+  ): Promise<{ count: number; transactions: Transaction[] }> => {
+    const { data } = await api.put(`/transactions/installment-group/${groupId}`, {
+      ...updates,
+      dashboardId,
+      scope
+    });
+    return data.data;
+  },
 };
 
 export const dashboardService = {

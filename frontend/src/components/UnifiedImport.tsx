@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -23,6 +23,7 @@ import {
   useTheme,
   alpha,
   useMediaQuery,
+  Checkbox,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -40,20 +41,100 @@ import {
   FileDownload,
   Close,
   Add,
+  CreditCard,
+  CheckBox,
+  CheckBoxOutlineBlank,
 } from '@mui/icons-material';
 import { useParams } from 'react-router-dom';
 import Papa from 'papaparse';
 import { ingestionService, transactionService } from '../services/api';
 import { showError, showErrorWithRetry, showSuccess, showWarning, showConfirm } from '../utils/notifications';
 import { useCategories, useCreateCategory } from '../hooks/api/useCategories';
+import { useTransactions } from '../hooks/api/useTransactions';
 import type { Transaction, Category } from '../types';
 import { hoverLift } from '../utils/animations';
+
+/**
+ * Verifica se duas transações são potencialmente duplicadas
+ * Critérios: mesma data + valor igual + descrição similar (>70% match)
+ */
+function isPotentialDuplicate(
+  newTx: { date: string | null; amount: number; description: string },
+  existingTx: Transaction
+): boolean {
+  // Comparar datas (mesmo dia)
+  if (newTx.date && existingTx.date) {
+    const newDate = new Date(newTx.date).toDateString();
+    const existDate = new Date(existingTx.date).toDateString();
+    if (newDate !== existDate) return false;
+  }
+  
+  // Comparar valores (tolerância de R$0.01)
+  if (Math.abs(Math.abs(newTx.amount) - Math.abs(existingTx.amount)) > 0.01) return false;
+  
+  // Comparar descrições (similaridade)
+  const newDesc = newTx.description.toLowerCase().trim();
+  const existDesc = existingTx.description.toLowerCase().trim();
+  
+  // Match exato ou parcial (pelo menos 70% das palavras em comum)
+  if (newDesc === existDesc) return true;
+  
+  const newWords = new Set(newDesc.split(/\s+/));
+  const existWords = new Set(existDesc.split(/\s+/));
+  const commonWords = [...newWords].filter(w => existWords.has(w));
+  const similarity = commonWords.length / Math.max(newWords.size, existWords.size);
+  
+  return similarity >= 0.7;
+}
+
+/**
+ * Encontra possíveis duplicatas em uma lista de transações existentes
+ */
+function findDuplicates(
+  newTransactions: Array<{ date: string | null; amount: number; description: string }>,
+  existingTransactions: Transaction[]
+): Map<number, Transaction> {
+  const duplicates = new Map<number, Transaction>();
+  
+  newTransactions.forEach((newTx, index) => {
+    const duplicate = existingTransactions.find(existing => 
+      isPotentialDuplicate(newTx, existing)
+    );
+    if (duplicate) {
+      duplicates.set(index, duplicate);
+    }
+  });
+  
+  return duplicates;
+}
 
 interface ExtractedItem {
   description: string;
   quantity?: number;
   unitPrice?: number;
   totalPrice: number;
+}
+
+// Transação individual extraída de uma fatura
+interface ExtractedTransaction {
+  merchant: string | null;
+  date: string | null;
+  amount: number;
+  category?: string | null;
+  description?: string | null;
+  installmentInfo?: string | null;
+  cardLastDigits?: string | null;
+}
+
+// Metadados da fatura
+interface StatementInfo {
+  institution?: string | null;
+  cardLastDigits?: string | null;
+  dueDate?: string | null;
+  totalAmount?: number | null;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  holderName?: string | null;
 }
 
 interface ExtractionResult {
@@ -64,6 +145,10 @@ interface ExtractionResult {
   items?: ExtractedItem[] | null;
   confidence: number;
   extractionMethod: 'regex' | 'ai';
+  // Multi-transaction fields
+  isMultiTransaction?: boolean;
+  transactions?: ExtractedTransaction[];
+  statementInfo?: StatementInfo;
 }
 
 interface UnifiedImportProps {
@@ -88,6 +173,37 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
   const [dragActive, setDragActive] = useState(false);
   const [csvPreview, setCsvPreview] = useState<Partial<Transaction>[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Multi-transaction state
+  const [selectedTransactions, setSelectedTransactions] = useState<Set<number>>(new Set());
+  const [duplicateWarnings, setDuplicateWarnings] = useState<Map<number, Transaction>>(new Map());
+  const [loadingTime, setLoadingTime] = useState(0);
+
+  // Track loading time for user feedback
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (loading) {
+      setLoadingTime(0);
+      interval = setInterval(() => {
+        setLoadingTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [loading]);
+
+  // Dynamic loading message based on elapsed time
+  const getLoadingMessage = () => {
+    if (loadingTime < 5) return 'Enviando documento para análise...';
+    if (loadingTime < 15) return 'Processando documento com IA...';
+    if (loadingTime < 30) return '📄 Documento grande detectado. A IA está extraindo todas as transações...';
+    if (loadingTime < 60) return '⏳ PDF com múltiplas páginas. Isso pode levar até 1 minuto...';
+    return '🔄 Quase lá! Processando últimas informações...';
+  };
+
+  // Fetch existing transactions for duplicate detection
+  const { data: existingTransactions = [] } = useTransactions({}, dashboardId);
 
   // Detect file type and set mode automatically
   const detectFileType = (file: File): ImportMode => {
@@ -192,6 +308,12 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
       const categoryNames = categories?.map((c: Category) => c.name) || [];
       const data = await ingestionService.upload(file, categoryNames);
       setResult(data);
+      
+      // Se for multi-transação, seleciona todas por padrão
+      if (data.isMultiTransaction && data.transactions) {
+        setSelectedTransactions(new Set(data.transactions.map((_: ExtractedTransaction, i: number) => i)));
+      }
+      
       showSuccess('Documento processado com sucesso!');
     } catch (error: any) {
       showErrorWithRetry(error, handleUploadAI);
@@ -285,9 +407,298 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     setFile(null);
     setResult(null);
     setCsvPreview(null);
+    setSelectedTransactions(new Set());
+    setDuplicateWarnings(new Map());
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  // Multi-transaction handlers
+  const toggleTransaction = (index: number) => {
+    setSelectedTransactions(prev => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  };
+
+  /**
+   * Parseia informações de parcelamento de textos como:
+   * - "Parcela 02 de 12"
+   * - "02/12"
+   * - "Parcela 2/12"
+   * - "2 de 12"
+   * Retorna {current, total} ou null se não for parcelado
+   */
+  const parseInstallmentInfo = (info: string | null | undefined): { current: number; total: number } | null => {
+    if (!info) return null;
+    
+    // Padrões comuns: "Parcela 02 de 12", "02/12", "2/12", "Parcela 2 de 12"
+    const patterns = [
+      /parcela\s*(\d+)\s*de\s*(\d+)/i,
+      /parcela\s*(\d+)\s*\/\s*(\d+)/i,
+      /(\d+)\s*de\s*(\d+)/i,
+      /(\d+)\s*\/\s*(\d+)/i,
+    ];
+    
+    for (const pattern of patterns) {
+      const match = info.match(pattern);
+      if (match) {
+        const current = parseInt(match[1], 10);
+        const total = parseInt(match[2], 10);
+        if (current > 0 && total > 0 && current <= total) {
+          return { current, total };
+        }
+      }
+    }
+    
+    return null;
+  };
+
+  /**
+   * Adiciona meses a uma data
+   */
+  const addMonths = (date: Date, months: number): Date => {
+    const result = new Date(date);
+    result.setMonth(result.getMonth() + months);
+    return result;
+  };
+
+  const selectAllTransactions = () => {
+    if (result?.transactions) {
+      setSelectedTransactions(new Set(result.transactions.map((_, i) => i)));
+    }
+  };
+
+  const deselectAllTransactions = () => {
+    setSelectedTransactions(new Set());
+  };
+
+  const handleSaveMultipleTransactions = async () => {
+    if (!result?.transactions || !dashboardId || selectedTransactions.size === 0) return;
+
+    const selectedTxs = result.transactions.filter((_, i) => selectedTransactions.has(i));
+
+    // Identificar categorias novas nas transações selecionadas
+    const uniqueCategories = new Set<string>();
+    const categoryTypes = new Map<string, 'Receita' | 'Despesa'>();
+
+    selectedTxs.forEach(tx => {
+      if (tx.category && tx.category !== 'Outros') {
+        uniqueCategories.add(tx.category);
+        // Guarda o tipo da primeira ocorrência para usar na criação
+        if (!categoryTypes.has(tx.category)) {
+          categoryTypes.set(tx.category, tx.amount < 0 ? 'Receita' : 'Despesa');
+        }
+      }
+    });
+
+    // Filtrar apenas as que não existem
+    const categoriesToCreate: string[] = [];
+    const normalizedExistingCategories = new Set(
+        categories?.map(c => c.name.toLowerCase()) || []
+    );
+
+    uniqueCategories.forEach(cat => {
+        if (!normalizedExistingCategories.has(cat.toLowerCase())) {
+            categoriesToCreate.push(cat);
+        }
+    });
+
+    // Mapa de substituição (caso o usuário negue a criação ou ocorra erro)
+    const categoryReplacementMap = new Map<string, string>();
+
+    // Se houver categorias novas, perguntar ao usuário
+    if (categoriesToCreate.length > 0) {
+        const categoryList = categoriesToCreate.map(c => `- ${c} (${categoryTypes.get(c) || 'Despesa'})`).join('\n');
+        const confirmed = await showConfirm(
+            `A importação contém ${categoriesToCreate.length} categorias que ainda não existem:\n\n${categoryList}\n\nDeseja criá-las automaticamente?`,
+            {
+                title: 'Novas Categorias Detectadas',
+                confirmButtonText: 'Sim, criar todas',
+                cancelButtonText: 'Não, usar "Outros"',
+                icon: 'question'
+            }
+        );
+
+        if (confirmed.isConfirmed) {
+            setSaving(true);
+            try {
+                await Promise.all(categoriesToCreate.map(catName => 
+                    createCategory.mutateAsync({
+                        data: { 
+                          name: catName, 
+                          type: categoryTypes.get(catName) || 'Despesa'
+                        },
+                        dashboardId
+                    })
+                ));
+                showSuccess(`${categoriesToCreate.length} categorias criadas com sucesso!`, { timer: 2000 });
+            } catch (err) {
+                console.error('Erro ao criar categorias em lote:', err);
+                showWarning('Ocorreu um erro ao criar algumas categorias. Elas serão convertidas para "Outros".');
+                categoriesToCreate.forEach(cat => categoryReplacementMap.set(cat, 'Outros'));
+            } finally {
+                setSaving(false);
+            }
+        } else {
+             categoriesToCreate.forEach(cat => categoryReplacementMap.set(cat, 'Outros'));
+        }
+    }
+    
+    // Preparar transações para salvar (incluindo parcelas futuras)
+    const allTransactionsToSave: Array<{
+      description: string;
+      amount: number;
+      date: string;
+      entryType: 'Receita' | 'Despesa';
+      flowType: 'Fixa' | 'Variável';
+      category: string;
+      installmentTotal: number;
+      installmentNumber: number;
+      installmentStatus: 'N/A' | 'Paga' | 'Pendente';
+      installmentGroupId?: string;
+      isTemporary: boolean;
+      dashboardId: string;
+      notes?: string;
+    }> = [];
+
+    let totalInstallmentsCreated = 0;
+
+    for (const tx of selectedTxs) {
+      const installment = parseInstallmentInfo(tx.installmentInfo);
+      const baseDate = tx.date ? new Date(tx.date) : new Date();
+      const description = tx.merchant || tx.description || 'Transação';
+      const amount = Math.abs(tx.amount); // Parcelas são sempre positivas
+      const entryType = tx.amount < 0 ? 'Receita' as const : 'Despesa' as const;
+      
+      const originalCat = tx.category || 'Outros';
+      const finalCategory = categoryReplacementMap.get(originalCat) || originalCat;
+
+      if (installment && installment.total > 1) {
+        // Gerar ID único para vincular todas as parcelas deste grupo
+        const groupId = crypto.randomUUID();
+        
+        // Transação parcelada - criar todas as parcelas
+        for (let i = installment.current; i <= installment.total; i++) {
+          const monthsToAdd = i - installment.current;
+          const installmentDate = addMonths(baseDate, monthsToAdd);
+          
+          allTransactionsToSave.push({
+            description: `${description} (${i}/${installment.total})`,
+            amount,
+            date: installmentDate.toISOString(),
+            entryType,
+            flowType: 'Variável' as const,
+            category: finalCategory,
+            installmentTotal: installment.total,
+            installmentNumber: i,
+            installmentStatus: i === installment.current ? 'Paga' as const : 'Pendente' as const,
+            installmentGroupId: groupId,
+            isTemporary: false,
+            dashboardId,
+            notes: i === installment.current 
+              ? `Parcela atual importada da fatura`
+              : `Parcela futura gerada automaticamente`,
+          });
+          totalInstallmentsCreated++;
+        }
+      } else {
+        // Transação única (sem parcelamento)
+        allTransactionsToSave.push({
+          description,
+          amount,
+          date: baseDate.toISOString(),
+          entryType,
+          flowType: 'Variável' as const,
+          category: finalCategory,
+          installmentTotal: 1,
+          installmentNumber: 1,
+          installmentStatus: 'Paga' as const,
+          isTemporary: false,
+          dashboardId,
+          notes: tx.installmentInfo || undefined,
+        });
+      }
+    }
+
+    // Verificar duplicatas antes de salvar
+    if (existingTransactions.length > 0) {
+      const duplicates = findDuplicates(allTransactionsToSave, existingTransactions);
+      
+      if (duplicates.size > 0) {
+        const duplicateCount = duplicates.size;
+        const duplicateList = [...duplicates.entries()].slice(0, 3).map(([idx]) => {
+          const tx = allTransactionsToSave[idx];
+          return `- ${tx.description} (${formatCurrency(tx.amount)})`;  
+        }).join('\n');
+        
+        const moreText = duplicateCount > 3 ? `\n...e mais ${duplicateCount - 3}` : '';
+        
+        const confirmed = await showConfirm(
+          `Foram encontradas ${duplicateCount} possíveis transações duplicadas:\n\n${duplicateList}${moreText}\n\nDeseja importar mesmo assim?`,
+          {
+            title: '⚠️ Possíveis Duplicatas',
+            confirmButtonText: 'Sim, importar todas',
+            cancelButtonText: 'Cancelar',
+            icon: 'warning'
+          }
+        );
+
+        if (!confirmed.isConfirmed) {
+          setDuplicateWarnings(duplicates);
+          showWarning(`${duplicateCount} possíveis duplicatas marcadas. Revise ou desmarque antes de importar.`);
+          return;
+        }
+      }
+    }
+
+    setSaving(true);
+    try {
+      await transactionService.createMany(allTransactionsToSave);
+      
+      const installmentsMsg = totalInstallmentsCreated > selectedTransactions.size 
+        ? ` (incluindo ${totalInstallmentsCreated - selectedTransactions.size} parcelas futuras)`
+        : '';
+      showSuccess(`${allTransactionsToSave.length} transações importadas com sucesso!${installmentsMsg}`);
+      handleClear();
+    } catch (error) {
+      showError(error, { title: 'Erro', text: 'Não foi possível salvar as transações.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getSelectedTotal = () => {
+    if (!result?.transactions) return 0;
+    // Calcula total de despesas (excluindo pagamentos de fatura que são movimentações internas)
+    // Pagamentos de fatura geralmente têm valores muito altos e categoria "Pagamento"
+    return result.transactions
+      .filter((_, i) => selectedTransactions.has(i))
+      .filter(tx => {
+        const cat = (tx.category || '').toLowerCase();
+        // Exclui pagamentos de fatura (são movimentações internas do cartão)
+        const isPagamentoFatura = cat.includes('pagamento') && tx.amount < 0;
+        return !isPagamentoFatura;
+      })
+      .reduce((sum, tx) => sum + tx.amount, 0);
+  };
+
+  // Conta quantos são pagamentos de fatura (para informar o usuário)
+  const getPaymentCount = () => {
+    if (!result?.transactions) return 0;
+    return result.transactions
+      .filter((_, i) => selectedTransactions.has(i))
+      .filter(tx => {
+        const cat = (tx.category || '').toLowerCase();
+        return cat.includes('pagamento') && tx.amount < 0;
+      })
+      .length;
   };
 
   const formatCurrency = (value: number) => {
@@ -446,9 +857,14 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                       }} 
                     />
                   </Box>
-                  <Typography variant="body2" color="text.secondary">
-                    {mode === 'csv' ? 'Processando planilha...' : 'Analisando documento com IA...'}
+                  <Typography variant="body2" color="text.secondary" textAlign="center">
+                    {mode === 'csv' ? 'Processando planilha...' : getLoadingMessage()}
                   </Typography>
+                  {mode === 'ai' && loadingTime > 5 && (
+                    <Typography variant="caption" color="text.secondary">
+                      ⏱️ {loadingTime}s
+                    </Typography>
+                  )}
                 </Box>
               ) : file && mode === 'ai' && !result ? (
                 <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
@@ -666,150 +1082,380 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         {result && (
           <Fade in timeout={500}>
             <Box>
-              <Alert 
-                severity="success" 
-                icon={<CheckCircle fontSize="inherit" />}
-                sx={{ mb: 3, fontWeight: 500, borderRadius: 2 }}
-              >
-                ✨ Dados extraídos! Revise as informações antes de salvar.
-              </Alert>
+              {/* Multi-Transaction View (Credit Card Statement) */}
+              {result.isMultiTransaction && result.transactions ? (
+                <>
+                  <Alert 
+                    severity="success" 
+                    icon={<CreditCard fontSize="inherit" />}
+                    sx={{ mb: 3, fontWeight: 500, borderRadius: 2 }}
+                  >
+                    💳 Fatura detectada! {result.transactions.length} transações encontradas.
+                  </Alert>
 
-              <Paper variant="outlined" sx={{ p: { xs: 2, sm: 4 }, borderRadius: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
-                  <Box>
-                    <Typography variant="overline" color="text.secondary" fontWeight={600}>
-                      Estabelecimento
-                    </Typography>
-                    <Typography variant="h5" fontWeight={700}>
-                      {result.merchant || 'Não identificado'}
-                    </Typography>
-                  </Box>
-                  <Chip 
-                    label={result.extractionMethod === 'ai' ? '🤖 IA Generativa' : '⚡ Regex'} 
-                    color={result.extractionMethod === 'ai' ? 'secondary' : 'primary'}
-                    sx={{ fontWeight: 600 }}
-                  />
-                </Box>
-
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ mb: 3 }}>
-                  <Box flex={1}>
-                    <Typography variant="overline" color="text.secondary" fontWeight={600}>
-                      📅 Data
-                    </Typography>
-                    <Typography variant="h6" fontWeight={500}>
-                      {formatDate(result.date)}
-                    </Typography>
-                  </Box>
-                  <Box flex={1}>
-                    <Typography variant="overline" color="text.secondary" fontWeight={600}>
-                      💰 Valor
-                    </Typography>
-                    <Typography 
-                      variant="h5" 
-                      fontWeight={700}
-                      sx={{
-                        background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
-                        backgroundClip: 'text',
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
+                  {/* Statement Info Header */}
+                  {result.statementInfo && (
+                    <Paper 
+                      variant="outlined" 
+                      sx={{ 
+                        p: 2, 
+                        mb: 3, 
+                        borderRadius: 2,
+                        background: alpha(theme.palette.primary.main, 0.05),
                       }}
                     >
-                      {formatCurrency(result.amount)}
-                    </Typography>
-                  </Box>
-                  <Box flex={1}>
-                    <Typography variant="overline" color="text.secondary" fontWeight={600}>
-                      🎯 Confiança
-                    </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CircularProgress 
-                        variant="determinate" 
-                        value={result.confidence * 100} 
-                        size={32} 
-                        thickness={5}
-                        color={result.confidence > 0.8 ? 'success' : 'warning'}
-                      />
-                      <Typography variant="h6" fontWeight={600}>
-                        {Math.round(result.confidence * 100)}%
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Stack>
-
-                {result.category && (
-                  <Box sx={{ mb: 3 }}>
-                    <Typography variant="overline" color="text.secondary" fontWeight={600}>
-                      🏷️ Categoria
-                    </Typography>
-                    <Box sx={{ mt: 0.5 }}>
-                      <Chip label={result.category} color="info" />
-                    </Box>
-                  </Box>
-                )}
-
-                {result.items && result.items.length > 0 && (
-                  <>
-                    <Divider sx={{ my: 2 }} />
-                    <Box 
-                      sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', mb: 1 }}
-                      onClick={() => setShowItems(!showItems)}
-                    >
-                      <Typography variant="subtitle1" fontWeight={600} sx={{ flexGrow: 1 }}>
-                        📋 Itens ({result.items.length})
-                      </Typography>
-                      <IconButton size="small">
-                        {showItems ? <ExpandLess /> : <ExpandMore />}
-                      </IconButton>
-                    </Box>
-                    <Collapse in={showItems}>
-                      <List dense disablePadding>
-                        {result.items.map((item, index) => (
-                          <ListItem key={index} divider sx={{ py: 1 }}>
-                            <ListItemText
-                              primary={item.description}
-                              secondary={item.quantity ? `${item.quantity}x` : null}
-                            />
-                            <Typography fontWeight={600}>
-                              {formatCurrency(item.totalPrice)}
+                      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} alignItems="center">
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CreditCard color="primary" />
+                          <Box>
+                            <Typography variant="subtitle2" color="text.secondary">
+                              {result.statementInfo.institution || 'Cartão'}
                             </Typography>
-                          </ListItem>
-                        ))}
-                      </List>
-                    </Collapse>
-                  </>
-                )}
+                            <Typography variant="h6" fontWeight={700}>
+                              **** {result.statementInfo.cardLastDigits || '****'}
+                            </Typography>
+                          </Box>
+                        </Box>
+                        <Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', sm: 'block' } }} />
+                        <Box>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Vencimento
+                          </Typography>
+                          <Typography variant="body1" fontWeight={600}>
+                            {result.statementInfo.dueDate ? formatDate(result.statementInfo.dueDate) : '-'}
+                          </Typography>
+                        </Box>
+                        <Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', sm: 'block' } }} />
+                        <Box>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Total da Fatura
+                          </Typography>
+                          <Typography variant="h6" fontWeight={700} color="error.main">
+                            {formatCurrency(result.statementInfo.totalAmount || result.amount)}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Paper>
+                  )}
 
-                <Divider sx={{ my: 3 }} />
+                  {/* Selection Controls */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<CheckBox />}
+                        onClick={selectAllTransactions}
+                      >
+                        Selecionar Todas
+                      </Button>
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        startIcon={<CheckBoxOutlineBlank />}
+                        onClick={deselectAllTransactions}
+                      >
+                        Desmarcar
+                      </Button>
+                    </Box>
+                    <Chip 
+                      label={`${selectedTransactions.size} de ${result.transactions.length} selecionadas`}
+                      color="primary"
+                      variant="outlined"
+                    />
+                  </Box>
 
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
-                  <Button
-                    variant="contained"
-                    size="large"
-                    startIcon={saving ? <CircularProgress size={20} /> : <Save />}
-                    onClick={handleSaveAITransaction}
-                    disabled={saving}
+                  {/* Transaction List */}
+                  <Paper 
+                    variant="outlined" 
                     sx={{ 
-                      px: 4,
-                      py: 1.5,
-                      fontWeight: 600,
-                      borderRadius: 3,
-                      background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                      borderRadius: 2, 
+                      maxHeight: 400, 
+                      overflow: 'auto',
+                      mb: 3,
                     }}
                   >
-                    {saving ? 'Salvando...' : 'Salvar Transação'}
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    size="large"
-                    startIcon={<Refresh />}
-                    onClick={handleClear}
-                    disabled={saving}
-                    sx={{ borderRadius: 3 }}
+                    <List dense disablePadding>
+                      {result.transactions.map((tx, index) => {
+                        const isDuplicate = duplicateWarnings.has(index);
+                        return (
+                          <ListItem 
+                            key={index}
+                            divider={index < result.transactions!.length - 1}
+                            sx={{ 
+                              py: 1.5,
+                              bgcolor: isDuplicate 
+                                ? alpha(theme.palette.warning.main, 0.15)
+                                : selectedTransactions.has(index) 
+                                  ? alpha(theme.palette.primary.main, 0.08) 
+                                  : 'transparent',
+                              borderLeft: isDuplicate ? `4px solid ${theme.palette.warning.main}` : 'none',
+                              '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.04) },
+                            }}
+                            secondaryAction={
+                              <Stack direction="row" spacing={1} alignItems="center">
+                                {isDuplicate && (
+                                  <Chip 
+                                    size="small" 
+                                    label="⚠️ Duplicata?" 
+                                    color="warning" 
+                                    sx={{ fontSize: '0.65rem' }}
+                                  />
+                                )}
+                                <Typography 
+                                  fontWeight={600} 
+                                  color={tx.amount < 0 ? 'success.main' : 'text.primary'}
+                                >
+                                  {tx.amount < 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
+                                </Typography>
+                              </Stack>
+                            }
+                          >
+                            <Checkbox
+                              checked={selectedTransactions.has(index)}
+                              onChange={() => toggleTransaction(index)}
+                              sx={{ mr: 1 }}
+                            />
+                            <ListItemText
+                              primary={
+                                <Box component="span" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                  <Typography component="span" fontWeight={500}>
+                                    {tx.merchant || tx.description || 'Transação'}
+                                  </Typography>
+                                  {tx.installmentInfo && (
+                                    <Chip size="small" label={tx.installmentInfo} sx={{ fontSize: '0.7rem' }} />
+                                  )}
+                                </Box>
+                              }
+                              secondary={
+                                <Box component="span" sx={{ display: 'flex', gap: 2, mt: 0.5 }}>
+                                  <Typography component="span" variant="caption" color="text.secondary">
+                                    📅 {tx.date ? formatDate(tx.date) : '-'}
+                                  </Typography>
+                                  {tx.category && (
+                                    <Typography component="span" variant="caption" color="text.secondary">
+                                      🏷️ {tx.category}
+                                    </Typography>
+                                  )}
+                                  {tx.cardLastDigits && (
+                                    <Typography component="span" variant="caption" color="text.secondary">
+                                      💳 ****{tx.cardLastDigits}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              }
+                            />
+                          </ListItem>
+                        );
+                      })}
+                    </List>
+                  </Paper>
+
+                  {/* Summary and Save */}
+                  <Paper 
+                    variant="outlined" 
+                    sx={{ 
+                      p: 2, 
+                      borderRadius: 2, 
+                      mb: 2,
+                      background: alpha(theme.palette.success.main, 0.05),
+                    }}
                   >
-                    Novo Documento
-                  </Button>
-                </Stack>
-              </Paper>
+                    <Stack spacing={1}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography>
+                          Total selecionado: <strong>{selectedTransactions.size}</strong> transações
+                        </Typography>
+                        <Typography variant="h6" fontWeight={700} color="primary.main">
+                          {formatCurrency(getSelectedTotal())}
+                        </Typography>
+                      </Stack>
+                      {getPaymentCount() > 0 && (
+                        <Typography variant="caption" color="text.secondary">
+                          * Excluindo {getPaymentCount()} pagamento(s) de fatura anterior
+                        </Typography>
+                      )}
+                    </Stack>
+                  </Paper>
+
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
+                    <Button
+                      variant="contained"
+                      size="large"
+                      startIcon={saving ? <CircularProgress size={20} /> : <Save />}
+                      onClick={handleSaveMultipleTransactions}
+                      disabled={saving || selectedTransactions.size === 0}
+                      sx={{ 
+                        px: 4,
+                        py: 1.5,
+                        fontWeight: 600,
+                        borderRadius: 3,
+                        background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                      }}
+                    >
+                      {saving ? 'Salvando...' : `Importar ${selectedTransactions.size} Transações`}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      startIcon={<Refresh />}
+                      onClick={handleClear}
+                      disabled={saving}
+                      sx={{ borderRadius: 3 }}
+                    >
+                      Novo Documento
+                    </Button>
+                  </Stack>
+                </>
+              ) : (
+                /* Single Transaction View (Original) */
+                <>
+                  <Alert 
+                    severity="success" 
+                    icon={<CheckCircle fontSize="inherit" />}
+                    sx={{ mb: 3, fontWeight: 500, borderRadius: 2 }}
+                  >
+                    ✨ Dados extraídos! Revise as informações antes de salvar.
+                  </Alert>
+
+                  <Paper variant="outlined" sx={{ p: { xs: 2, sm: 4 }, borderRadius: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+                      <Box>
+                        <Typography variant="overline" color="text.secondary" fontWeight={600}>
+                          Estabelecimento
+                        </Typography>
+                        <Typography variant="h5" fontWeight={700}>
+                          {result.merchant || 'Não identificado'}
+                        </Typography>
+                      </Box>
+                      <Chip 
+                        label={result.extractionMethod === 'ai' ? '🤖 IA Generativa' : '⚡ Regex'} 
+                        color={result.extractionMethod === 'ai' ? 'secondary' : 'primary'}
+                        sx={{ fontWeight: 600 }}
+                      />
+                    </Box>
+
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={3} sx={{ mb: 3 }}>
+                      <Box flex={1}>
+                        <Typography variant="overline" color="text.secondary" fontWeight={600}>
+                          📅 Data
+                        </Typography>
+                        <Typography variant="h6" fontWeight={500}>
+                          {formatDate(result.date)}
+                        </Typography>
+                      </Box>
+                      <Box flex={1}>
+                        <Typography variant="overline" color="text.secondary" fontWeight={600}>
+                          💰 Valor
+                        </Typography>
+                        <Typography 
+                          variant="h5" 
+                          fontWeight={700}
+                          sx={{
+                            background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                            backgroundClip: 'text',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent',
+                          }}
+                        >
+                          {formatCurrency(result.amount)}
+                        </Typography>
+                      </Box>
+                      <Box flex={1}>
+                        <Typography variant="overline" color="text.secondary" fontWeight={600}>
+                          🎯 Confiança
+                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CircularProgress 
+                            variant="determinate" 
+                            value={result.confidence * 100} 
+                            size={32} 
+                            thickness={5}
+                            color={result.confidence > 0.8 ? 'success' : 'warning'}
+                          />
+                          <Typography variant="h6" fontWeight={600}>
+                            {Math.round(result.confidence * 100)}%
+                          </Typography>
+                        </Box>
+                      </Box>
+                    </Stack>
+
+                    {result.category && (
+                      <Box sx={{ mb: 3 }}>
+                        <Typography variant="overline" color="text.secondary" fontWeight={600}>
+                          🏷️ Categoria
+                        </Typography>
+                        <Box sx={{ mt: 0.5 }}>
+                          <Chip label={result.category} color="info" />
+                        </Box>
+                      </Box>
+                    )}
+
+                    {result.items && result.items.length > 0 && (
+                      <>
+                        <Divider sx={{ my: 2 }} />
+                        <Box 
+                          sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', mb: 1 }}
+                          onClick={() => setShowItems(!showItems)}
+                        >
+                          <Typography variant="subtitle1" fontWeight={600} sx={{ flexGrow: 1 }}>
+                            📋 Itens ({result.items.length})
+                          </Typography>
+                          <IconButton size="small">
+                            {showItems ? <ExpandLess /> : <ExpandMore />}
+                          </IconButton>
+                        </Box>
+                        <Collapse in={showItems}>
+                          <List dense disablePadding>
+                            {result.items.map((item, index) => (
+                              <ListItem key={index} divider sx={{ py: 1 }}>
+                                <ListItemText
+                                  primary={item.description}
+                                  secondary={item.quantity ? `${item.quantity}x` : null}
+                                />
+                                <Typography fontWeight={600}>
+                                  {formatCurrency(item.totalPrice)}
+                                </Typography>
+                              </ListItem>
+                            ))}
+                          </List>
+                        </Collapse>
+                      </>
+                    )}
+
+                    <Divider sx={{ my: 3 }} />
+
+                    <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} justifyContent="center">
+                      <Button
+                        variant="contained"
+                        size="large"
+                        startIcon={saving ? <CircularProgress size={20} /> : <Save />}
+                        onClick={handleSaveAITransaction}
+                        disabled={saving}
+                        sx={{ 
+                          px: 4,
+                          py: 1.5,
+                          fontWeight: 600,
+                          borderRadius: 3,
+                          background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
+                        }}
+                      >
+                        {saving ? 'Salvando...' : 'Salvar Transação'}
+                      </Button>
+                      <Button
+                        variant="outlined"
+                        size="large"
+                        startIcon={<Refresh />}
+                        onClick={handleClear}
+                        disabled={saving}
+                        sx={{ borderRadius: 3 }}
+                      >
+                        Novo Documento
+                      </Button>
+                    </Stack>
+                  </Paper>
+                </>
+              )}
             </Box>
           </Fade>
         )}

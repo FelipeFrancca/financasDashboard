@@ -13,9 +13,37 @@ export interface TransactionItem {
 }
 
 /**
+ * Transação individual extraída de uma fatura
+ */
+export interface ExtractedTransaction {
+    merchant: string | null;
+    date: string | null; // ISO 8601 format
+    amount: number;
+    category?: string | null;
+    description?: string | null;
+    installmentInfo?: string | null; // Ex: "Parcela 02 de 12"
+    cardLastDigits?: string | null; // Últimos 4 dígitos do cartão
+}
+
+/**
+ * Metadados de uma fatura de cartão de crédito
+ */
+export interface StatementInfo {
+    institution?: string | null;
+    cardLastDigits?: string | null;
+    dueDate?: string | null;
+    totalAmount?: number | null;
+    periodStart?: string | null;
+    periodEnd?: string | null;
+    holderName?: string | null;
+}
+
+/**
  * Resultado da extração de dados financeiros
+ * Suporta tanto documentos simples (1 transação) quanto faturas (múltiplas)
  */
 export interface ExtractionResult {
+    // Campos para extração simples (nota fiscal, comprovante)
     merchant: string | null;
     date: string | null; // ISO 8601 format
     amount: number;
@@ -24,6 +52,11 @@ export interface ExtractionResult {
     confidence: number; // 0-1
     extractionMethod: 'regex' | 'ai';
     rawData?: any; // Dados brutos opcionais para debug
+
+    // Campos para extração multi-transação (fatura de cartão)
+    isMultiTransaction?: boolean;
+    transactions?: ExtractedTransaction[];
+    statementInfo?: StatementInfo;
 }
 
 /**
