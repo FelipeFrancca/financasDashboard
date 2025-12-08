@@ -10,6 +10,7 @@ export interface Transaction {
   id: string;
   dashboardId: string;
   date: string | Date;
+  dueDate?: string | Date; // Data de vencimento da fatura (para transações de cartão)
   entryType: 'Receita' | 'Despesa';
   flowType: 'Fixa' | 'Variável';
   category: string;
@@ -89,6 +90,7 @@ export interface Account {
   userId: string;
   closingDay?: number;
   dueDay?: number;
+  cardLastDigits?: string; // Últimos 4 dígitos do cartão
   createdAt: string;
   updatedAt: string;
 }

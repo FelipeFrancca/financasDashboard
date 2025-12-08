@@ -31,14 +31,19 @@ import {
  */
 export async function createAccount(
     dto: CreateAccountDTO,
+    dashboardId: string,
     userId: string
 ): Promise<Account> {
-    logger.info('Criando nova conta', 'AccountService', { userId, type: dto.type });
+    logger.info('Criando nova conta', 'AccountService', { userId, dashboardId, type: dto.type });
 
-    // Se for marcar como primária, desmarcar outras
+    // Verificar permissão no dashboard
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
+    // Se for marcar como primária, desmarcar outras do mesmo dashboard
     if (dto.isPrimary) {
         await prisma.account.updateMany({
-            where: { userId, isPrimary: true },
+            where: { userId, dashboardId, isPrimary: true },
             data: { isPrimary: false },
         });
     }
@@ -51,12 +56,14 @@ export async function createAccount(
                 ? (dto.creditLimit || 0) - dto.initialBalance
                 : dto.initialBalance,
             userId,
+            dashboardId,
         },
     });
 
     logger.info('Conta criada com sucesso', 'AccountService', {
         accountId: account.id,
         userId,
+        dashboardId,
     });
 
     return account;
@@ -67,10 +74,15 @@ export async function createAccount(
  */
 export async function getAccounts(
     dto: QueryAccountsDTO,
+    dashboardId: string,
     userId: string
 ): Promise<{ data: Account[]; total: number }> {
+    // Verificar permissão no dashboard
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     const where: Prisma.AccountWhereInput = {
-        userId,
+        dashboardId,
         ...(dto.type && { type: dto.type }),
         ...(dto.status && { status: dto.status }),
         ...(dto.currency && { currency: dto.currency }),
@@ -392,14 +404,18 @@ export async function getPrimaryAccount(userId: string): Promise<Account | null>
 /**
  * Obtém resumo de todas as contas
  */
-export async function getAccountsSummary(userId: string): Promise<{
+export async function getAccountsSummary(dashboardId: string, userId: string): Promise<{
     totalAccounts: number;
     totalBalance: number;
     totalAvailable: number;
     byType: Record<AccountType, { count: number; balance: number }>;
 }> {
+    // Verificar permissão no dashboard
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId);
+
     const accounts = await prisma.account.findMany({
-        where: { userId, deletedAt: null, status: AccountStatus.ACTIVE },
+        where: { dashboardId, deletedAt: null, status: AccountStatus.ACTIVE },
     });
 
     const totalBalance = accounts.reduce((sum, acc) => sum + Number(acc.currentBalance), 0);
@@ -419,6 +435,5 @@ export async function getAccountsSummary(userId: string): Promise<{
         totalBalance,
         totalAvailable,
         byType,
-        byType
     };
 }

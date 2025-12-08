@@ -589,18 +589,19 @@ Se o documento for uma fatura de cartão de crédito (contém múltiplas compras
     "institution": "Nome do banco/emissor (ex: Inter, Nubank, Itaú)",
     "cardLastDigits": "Últimos 4 dígitos do cartão (ex: 2440)",
     "dueDate": "Data de vencimento em ISO 8601",
-    "totalAmount": Valor total da fatura como número,
+    "totalAmount": Valor total da fatura como número (JÁ com estornos descontados),
     "holderName": "Nome do titular"
   },
   "transactions": [
     {
       "merchant": "Nome do estabelecimento",
       "date": "Data da compra em ISO 8601",
-      "amount": Valor como número decimal,
+      "amount": Valor ABSOLUTO como número decimal (sempre positivo),
       "category": "Categoria sugerida",
       "description": "Descrição adicional se houver",
-      "installmentInfo": "Parcela X de Y (se aplicável, senão null)",
-      "cardLastDigits": "Últimos 4 dígitos do cartão desta compra (se houver múltiplos cartões)"
+      "installmentInfo": "Parcela X/Y ou X de Y (formato encontrado no documento)",
+      "cardLastDigits": "Últimos 4 dígitos do cartão desta compra",
+      "isRefund": true/false (se for estorno/crédito/reembolso)
     }
   ]
 }
@@ -617,15 +618,28 @@ Se for um documento com apenas UMA transação, retorne:
   "items": [{"description": "Item", "totalPrice": valor}] ou null
 }
 
-REGRAS IMPORTANTES:
+REGRAS DE PARCELAMENTO - MUITO IMPORTANTE:
+- Identifique TODAS as compras parceladas na fatura
+- O parcelamento pode aparecer em vários formatos: "Parcela 6/10", "(Parcela 03 de 12)", "1/2", "2 de 3", etc.
+- Extraia o installmentInfo EXATAMENTE como aparece no documento
+- Mesmo se a parcela for 1/1, inclua se estiver indicado
+
+REGRAS DE ESTORNO/REEMBOLSO:
+- Estornos aparecem com "+" antes do valor (ex: "+ R$ 135,99")
+- Para estornos: marque "isRefund": true e use o valor POSITIVO
+- NÃO subtraia o valor do estorno de nenhum total (o banco já fez isso)
+- Estornos serão salvos como Receita (crédito na fatura)
+
+REGRAS DE PAGAMENTO DE FATURA:
+- Ignore linhas de "Pagamento de fatura" ou "Pagamento efetuado" - são movimentações internas
+
+REGRAS GERAIS:
 1. Converta R$ para números: "R$ 1.200,50" → 1200.50
-2. Datas DD/MM/YYYY → ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ)
+2. Datas DD/MM/YYYY ou "DD de MMM. YYYY" → ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ)
 3. Se não tiver hora, use T00:00:00.000Z
 4. EXTRAIA TODAS as transações da fatura, não apenas algumas
-5. Inclua pagamentos (valores positivos com +) como transações negativas (crédito)
-6. Ignore linhas de total/subtotal, extraia apenas transações individuais
-7. Para categoria: use uma das disponíveis ou sugira uma apropriada
-8. Retorne APENAS o JSON, sem texto adicional
+5. Para categoria: use uma das disponíveis ou sugira uma apropriada em português
+6. Retorne APENAS o JSON, sem texto adicional
 
 Extraia os dados agora:`;
     }

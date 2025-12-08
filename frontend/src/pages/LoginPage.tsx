@@ -156,14 +156,14 @@ export default function LoginPage() {
       nextInput?.focus();
       return;
     }
-    
+
     // Single digit
     if (value === '' || /^\d$/.test(value)) {
       const newCodeDigits = [...codeDigits];
       newCodeDigits[index] = value;
       setCodeDigits(newCodeDigits);
       setValueReset('code', newCodeDigits.join(''));
-      
+
       // Auto-focus next input
       if (value && index < 3) {
         const nextInput = document.getElementById(`code-digit-${index + 1}`);
@@ -188,7 +188,7 @@ export default function LoginPage() {
       if (resetStep === 0) {
         // Step 1: Request Code
         const result = await requestPasswordReset(data.email);
-        
+
         if (result.hasExistingToken && !result.sent) {
           // There's an existing valid token - ask user if they want to resend
           const expiresInMinutes = Math.ceil((result.expiresIn || 0) / 60);
@@ -200,7 +200,7 @@ export default function LoginPage() {
               cancelButtonText: 'Usar código atual',
             }
           );
-          
+
           if (confirmed) {
             // Resend with force=true
             await requestPasswordReset(data.email, true);
@@ -327,12 +327,19 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = () => {
-    // Use URL relativa quando VITE_API_URL não está definida (produção)
-    const apiUrl = import.meta.env.VITE_API_URL === undefined || import.meta.env.VITE_API_URL === ''
-      ? ''
-      : import.meta.env.VITE_API_URL;
-    window.location.href = `${apiUrl}/api/auth/google`;
+    // Em produção, usa URL relativa (mesmo domínio)
+    // Em desenvolvimento, precisa da URL completa do backend
+    // O proxy do Vite só funciona para fetch/XHR, não para window.location.href
+    let apiUrl = import.meta.env.VITE_API_URL;
+
+    // Fallback para desenvolvimento local
+    if (!apiUrl && import.meta.env.DEV) {
+      apiUrl = 'http://localhost:5000';
+    }
+
+    window.location.href = `${apiUrl || ''}/api/auth/google`;
   };
+
 
   return (
     <Box
@@ -640,9 +647,9 @@ export default function LoginPage() {
                       sx={{ mt: 2, mb: 2 }}
                     >
                       {isLoading ? <CircularProgress size={24} /> : (
-                        resetStep === 0 ? "Enviar Código" : 
-                        resetStep === 1 ? "Verificar Código" : 
-                        "Redefinir Senha"
+                        resetStep === 0 ? "Enviar Código" :
+                          resetStep === 1 ? "Verificar Código" :
+                            "Redefinir Senha"
                       )}
                     </Button>
 

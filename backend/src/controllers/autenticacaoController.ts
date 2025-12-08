@@ -98,10 +98,42 @@ export const atualizarToken = async (req: Request, res: Response) => {
 export const obterUsuarioAtual = async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
     const userId = authReq.user!.userId;
-    const user = await authService.getUserById(userId);
+
+    // Buscar usuário com campos adicionais para verificar vinculações
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+            id: true,
+            email: true,
+            name: true,
+            avatar: true,
+            emailVerified: true,
+            googleId: true,
+            password: true,
+            createdAt: true,
+            updatedAt: true,
+        },
+    });
+
+    if (!user) {
+        return res.status(404).json({
+            success: false,
+            error: { message: 'Usuário não encontrado' },
+        });
+    }
+
+    // Preparar resposta sem expor dados sensíveis
+    const { password, googleId, ...userData } = user;
+
     res.json({
         success: true,
-        data: { user },
+        data: {
+            user: {
+                ...userData,
+                hasGoogleLinked: !!googleId,
+                hasPassword: !!password,
+            }
+        },
     });
 };
 
@@ -187,5 +219,52 @@ export const alterarSenha = async (req: Request, res: Response) => {
     res.json({
         success: true,
         message: 'Senha alterada com sucesso',
+    });
+};
+
+export const desvincularGoogle = async (req: Request, res: Response) => {
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.userId;
+
+    logger.info('Desvinculação de conta Google', 'AuthRoute', { userId });
+
+    // Verificar se usuário tem senha definida (precisa de outra forma de login)
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { password: true, googleId: true },
+    });
+
+    if (!user) {
+        return res.status(404).json({
+            success: false,
+            error: { message: 'Usuário não encontrado' },
+        });
+    }
+
+    if (!user.googleId) {
+        return res.status(400).json({
+            success: false,
+            error: { message: 'Conta Google não está vinculada' },
+        });
+    }
+
+    if (!user.password) {
+        return res.status(400).json({
+            success: false,
+            error: { message: 'Você precisa definir uma senha antes de desvincular o Google. Caso contrário, não poderá fazer login.' },
+        });
+    }
+
+    // Remover vinculação do Google
+    await prisma.user.update({
+        where: { id: userId },
+        data: { googleId: null },
+    });
+
+    logger.info('Conta Google desvinculada com sucesso', 'AuthRoute', { userId });
+
+    res.json({
+        success: true,
+        message: 'Conta Google desvinculada com sucesso',
     });
 };

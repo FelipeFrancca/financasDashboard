@@ -24,6 +24,7 @@ import {
   alpha,
   useMediaQuery,
   Checkbox,
+  Tooltip,
 } from '@mui/material';
 import {
   CloudUpload,
@@ -44,6 +45,7 @@ import {
   CreditCard,
   CheckBox,
   CheckBoxOutlineBlank,
+  InfoOutlined,
 } from '@mui/icons-material';
 import { useParams } from 'react-router-dom';
 import Papa from 'papaparse';
@@ -51,7 +53,8 @@ import { ingestionService, transactionService } from '../services/api';
 import { showError, showErrorWithRetry, showSuccess, showWarning, showConfirm } from '../utils/notifications';
 import { useCategories, useCreateCategory } from '../hooks/api/useCategories';
 import { useTransactions } from '../hooks/api/useTransactions';
-import type { Transaction, Category } from '../types';
+import { useAccounts, useCreateAccount } from '../hooks/api/useAccounts';
+import type { Transaction, Category, Account } from '../types';
 import { hoverLift } from '../utils/animations';
 
 /**
@@ -168,6 +171,7 @@ interface ExtractedTransaction {
   description?: string | null;
   installmentInfo?: string | null;
   cardLastDigits?: string | null;
+  isRefund?: boolean; // True se for estorno/reembolso
 }
 
 // Metadados da fatura
@@ -253,6 +257,64 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
 
   // Fetch existing transactions for duplicate detection
   const { data: existingTransactions = [] } = useTransactions({}, dashboardId);
+
+  // Fetch accounts for auto-linking to credit cards
+  const { data: accounts = [] } = useAccounts(dashboardId || '');
+
+  // Mutation to create new accounts
+  const createAccount = useCreateAccount();
+
+  /**
+   * Encontra conta de cartão de crédito com base nos últimos 4 dígitos
+   */
+  const findMatchingCreditCard = (cardLastDigits: string | null | undefined): Account | undefined => {
+    if (!cardLastDigits) return undefined;
+    return accounts.find(
+      (acc: Account) =>
+        acc.type === 'CREDIT_CARD' &&
+        acc.cardLastDigits === cardLastDigits &&
+        acc.status === 'ACTIVE'
+    );
+  };
+
+  /**
+   * Cria uma nova conta de cartão de crédito automaticamente
+   */
+  const createCreditCardAccount = async (
+    cardLastDigits: string,
+    holderName: string | null | undefined,
+    institution: string | null | undefined,
+    dueDay: number | null | undefined
+  ): Promise<Account | undefined> => {
+    try {
+      // Formato do nome: "FELIPE DE SOUZA FRANCA - Inter *2440" ou similar
+      const accountName = holderName
+        ? `${holderName} - ${institution || 'Cartão'} *${cardLastDigits}`
+        : `${institution || 'Cartão de Crédito'} *${cardLastDigits}`;
+
+      const newAccount = await createAccount.mutateAsync({
+        data: {
+          name: accountName,
+          type: 'CREDIT_CARD',
+          institution: institution || undefined,
+          currency: 'BRL',
+          initialBalance: 0,
+          currentBalance: 0,
+          availableBalance: 0,
+          status: 'ACTIVE',
+          isPrimary: false,
+          cardLastDigits,
+          dueDay: dueDay || undefined,
+        },
+        dashboardId: dashboardId || '',
+      });
+
+      return newAccount as Account;
+    } catch (error) {
+      console.error('Erro ao criar conta de cartão:', error);
+      return undefined;
+    }
+  };
 
   // Detect file type and set mode automatically
   const detectFileType = (file: File): ImportMode => {
@@ -622,11 +684,63 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
       }
     }
 
+    // ===== VINCULAÇÃO AUTOMÁTICA A CARTÃO DE CRÉDITO =====
+    // Tentar encontrar ou criar conta de cartão com base nos dados da fatura
+    let linkedAccountId: string | undefined;
+    let linkedInstitution: string | undefined;
+
+    const cardDigits = result.statementInfo?.cardLastDigits;
+    if (cardDigits) {
+      // Primeiro, buscar conta existente
+      const existingCard = findMatchingCreditCard(cardDigits);
+
+      if (existingCard) {
+        linkedAccountId = existingCard.id;
+        linkedInstitution = existingCard.institution;
+      } else {
+        // Conta não existe, perguntar se deseja criar automaticamente
+        const dueDay = result.statementInfo?.dueDate
+          ? new Date(result.statementInfo.dueDate).getDate()
+          : undefined;
+
+        const createResult = await showConfirm(
+          `Não foi encontrada nenhuma conta de cartão de crédito com final *${cardDigits}. Deseja criar uma nova conta automaticamente?`,
+          {
+            title: 'Criar conta de cartão?',
+            icon: 'question',
+            confirmButtonText: 'Sim, criar conta',
+            cancelButtonText: 'Não, importar sem vincular',
+          }
+        );
+
+        if (createResult.isConfirmed) {
+          const newAccount = await createCreditCardAccount(
+            cardDigits,
+            result.statementInfo?.holderName,
+            result.statementInfo?.institution,
+            dueDay
+          );
+
+          if (newAccount) {
+            linkedAccountId = newAccount.id;
+            linkedInstitution = newAccount.institution;
+            showSuccess(`Conta "${newAccount.name}" criada automaticamente!`);
+          }
+        }
+      }
+    }
+
+    // Usar institution da fatura caso não tenha da conta
+    if (!linkedInstitution) {
+      linkedInstitution = result.statementInfo?.institution || undefined;
+    }
+
     // Preparar transações para salvar (incluindo parcelas futuras)
     const allTransactionsToSave: Array<{
       description: string;
       amount: number;
       date: string;
+      dueDate?: string; // Data de vencimento da fatura
       entryType: 'Receita' | 'Despesa';
       flowType: 'Fixa' | 'Variável';
       category: string;
@@ -637,6 +751,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
       isTemporary: boolean;
       dashboardId: string;
       notes?: string;
+      accountId?: string; // Vincular ao cartão de crédito
+      institution?: string; // Banco/instituição
     }> = [];
 
     let totalInstallmentsCreated = 0;
@@ -644,8 +760,10 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     for (const tx of selectedTxs) {
       const installment = parseInstallmentInfo(tx.installmentInfo);
       const description = tx.merchant || tx.description || 'Transação';
-      const amount = Math.abs(tx.amount); // Parcelas são sempre positivas
-      const entryType = tx.amount < 0 ? 'Receita' as const : 'Despesa' as const;
+      const amount = Math.abs(tx.amount); // Valores são sempre positivos
+      // isRefund = true OU valor negativo significa estorno/receita
+      const isRefund = tx.isRefund === true || tx.amount < 0;
+      const entryType = isRefund ? 'Receita' as const : 'Despesa' as const;
 
       const originalCat = tx.category || 'Outros';
       const finalCategory = categoryReplacementMap.get(originalCat) || originalCat;
@@ -658,6 +776,10 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         ? new Date(result.statementInfo.dueDate)
         : transactionDate;
 
+      // Usar conta e instituição vinculadas (já foram determinadas antes do loop)
+      const accountId = linkedAccountId;
+      const institution = linkedInstitution;
+
       if (installment && installment.total > 1) {
         // Gerar ID único para vincular todas as parcelas deste grupo
         const groupId = crypto.randomUUID();
@@ -667,12 +789,15 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         for (let i = installment.current; i <= installment.total; i++) {
           const monthsToAdd = i - installment.current;
           // Usar a data de vencimento da fatura como base para cálculo das parcelas
-          const installmentDate = addMonths(statementDueDate, monthsToAdd);
+          const installmentDueDate = addMonths(statementDueDate, monthsToAdd);
 
           allTransactionsToSave.push({
             description: `${description} (${i}/${installment.total})`,
             amount,
-            date: installmentDate.toISOString(),
+            // IMPORTANTE: Para parcelas, usamos a data de VENCIMENTO como data principal
+            // Assim cada parcela aparece no mês correto da fatura
+            date: installmentDueDate.toISOString(),
+            dueDate: installmentDueDate.toISOString(),
             entryType,
             flowType: 'Variável' as const,
             category: finalCategory,
@@ -682,22 +807,19 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
             installmentGroupId: groupId,
             isTemporary: false,
             dashboardId,
-            notes: i === installment.current
-              ? `Compra em ${transactionDate.toLocaleDateString('pt-BR')} | Vencimento: ${statementDueDate.toLocaleDateString('pt-BR')}`
-              : `Parcela futura | Vencimento: ${installmentDate.toLocaleDateString('pt-BR')}`,
+            notes: `Compra original: ${transactionDate.toLocaleDateString('pt-BR')}`,
+            accountId,
+            institution,
           });
           totalInstallmentsCreated++;
         }
       } else {
         // Transação única (sem parcelamento) - usa data original da transação
-        const dueDateNote = result.statementInfo?.dueDate
-          ? ` | Vencimento da fatura: ${statementDueDate.toLocaleDateString('pt-BR')}`
-          : '';
-
         allTransactionsToSave.push({
-          description,
+          description: isRefund ? `${description} (Estorno)` : description,
           amount,
-          date: transactionDate.toISOString(),
+          date: transactionDate.toISOString(), // Data da compra
+          dueDate: statementDueDate.toISOString(), // Data de vencimento da fatura
           entryType,
           flowType: 'Variável' as const,
           category: finalCategory,
@@ -706,7 +828,9 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
           installmentStatus: 'Paga' as const,
           isTemporary: false,
           dashboardId,
-          notes: (tx.installmentInfo || '') + dueDateNote || undefined,
+          notes: tx.installmentInfo || undefined,
+          accountId,
+          institution,
         });
       }
     }
@@ -760,17 +884,20 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
 
   const getSelectedTotal = () => {
     if (!result?.transactions) return 0;
-    // Calcula total de despesas (excluindo pagamentos de fatura que são movimentações internas)
-    // Pagamentos de fatura geralmente têm valores muito altos e categoria "Pagamento"
+    // Calcula total de despesas excluindo:
+    // 1. Pagamentos de fatura (movimentações internas)
+    // 2. Estornos/reembolsos (já descontados pelo banco no total da fatura)
     return result.transactions
       .filter((_, i) => selectedTransactions.has(i))
       .filter(tx => {
         const cat = (tx.category || '').toLowerCase();
         // Exclui pagamentos de fatura (são movimentações internas do cartão)
         const isPagamentoFatura = cat.includes('pagamento') && tx.amount < 0;
-        return !isPagamentoFatura;
+        // Exclui estornos (o banco já descontou do total da fatura)
+        const isRefund = tx.isRefund === true || tx.amount < 0;
+        return !isPagamentoFatura && !isRefund;
       })
-      .reduce((sum, tx) => sum + tx.amount, 0);
+      .reduce((sum, tx) => sum + Math.abs(tx.amount), 0);
   };
 
   // Conta quantos são pagamentos de fatura (para informar o usuário)
@@ -792,9 +919,21 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     }).format(value);
   };
 
+  /**
+   * Formata data ISO sem problemas de timezone
+   * Evita conversão que causa deslocamento de 1 dia
+   */
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'Data não identificada';
-    return new Date(dateString).toLocaleDateString('pt-BR');
+    // Parse manual para evitar problemas de timezone
+    const match = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const [, year, month, day] = match;
+      return `${day}/${month}/${year}`;
+    }
+    // Fallback: usar Date com ajuste de timezone
+    const date = new Date(dateString);
+    return date.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
   };
 
   /**
@@ -1392,9 +1531,18 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                         </Box>
                         <Divider orientation="vertical" flexItem sx={{ display: { xs: 'none', sm: 'block' } }} />
                         <Box>
-                          <Typography variant="subtitle2" color="text.secondary">
-                            Total da Fatura
-                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography variant="subtitle2" color="text.secondary">
+                              Total da Fatura
+                            </Typography>
+                            <Tooltip
+                              title="Valor total cobrado pelo banco nesta fatura, incluindo juros, taxas e descontando estornos"
+                              arrow
+                              placement="top"
+                            >
+                              <InfoOutlined sx={{ fontSize: 14, color: 'text.secondary', cursor: 'help' }} />
+                            </Tooltip>
+                          </Box>
                           <Typography variant="h6" fontWeight={700} color="error.main">
                             {formatCurrency(result.statementInfo.totalAmount || result.amount)}
                           </Typography>
@@ -1528,9 +1676,28 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                   >
                     <Stack spacing={1}>
                       <Stack direction="row" justifyContent="space-between" alignItems="center">
-                        <Typography>
-                          Total selecionado: <strong>{selectedTransactions.size}</strong> transações
-                        </Typography>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography>
+                            Total selecionado: <strong>{selectedTransactions.size}</strong> transações
+                          </Typography>
+                          <Tooltip
+                            title={
+                              <Box>
+                                <Typography variant="body2" fontWeight={600} gutterBottom>Como este valor é calculado:</Typography>
+                                <Typography variant="body2">• Soma das despesas selecionadas</Typography>
+                                <Typography variant="body2">• Exclui estornos/reembolsos (já descontados pelo banco)</Typography>
+                                <Typography variant="body2">• Exclui pagamentos de faturas anteriores</Typography>
+                                <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
+                                  Diferença com "Total da Fatura" pode ocorrer por juros, taxas ou transações futuras.
+                                </Typography>
+                              </Box>
+                            }
+                            arrow
+                            placement="top"
+                          >
+                            <InfoOutlined sx={{ fontSize: 16, color: 'text.secondary', cursor: 'help' }} />
+                          </Tooltip>
+                        </Box>
                         <Typography variant="h6" fontWeight={700} color="primary.main">
                           {formatCurrency(getSelectedTotal())}
                         </Typography>

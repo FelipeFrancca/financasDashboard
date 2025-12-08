@@ -21,8 +21,9 @@ export interface ExtractedTransaction {
     amount: number;
     category?: string | null;
     description?: string | null;
-    installmentInfo?: string | null; // Ex: "Parcela 02 de 12"
+    installmentInfo?: string | null; // Ex: "Parcela 02 de 12", "6/10", "1 de 2"
     cardLastDigits?: string | null; // Últimos 4 dígitos do cartão
+    isRefund?: boolean; // True se for estorno/reembolso (aparece com "+" na fatura)
 }
 
 /**

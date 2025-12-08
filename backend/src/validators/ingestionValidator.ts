@@ -26,6 +26,7 @@ export const extractedTransactionSchema = z.object({
     description: z.string().nullable().optional(),
     installmentInfo: z.string().nullable().optional(),
     cardLastDigits: z.string().nullable().optional(),
+    isRefund: z.boolean().optional(),
 });
 
 /**

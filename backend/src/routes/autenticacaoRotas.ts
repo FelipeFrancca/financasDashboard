@@ -67,5 +67,7 @@ router.get("/me", authenticateToken, asyncHandler(authController.obterUsuarioAtu
 router.put("/me", authenticateToken, asyncHandler(authController.atualizarUsuarioAtual as any));
 router.post("/change-password", authenticateToken, validateBody(changePasswordSchema), asyncHandler(authController.alterarSenha as any));
 router.post("/resend-welcome", authenticateToken, asyncHandler(authController.reenviarBoasVindas as any));
+router.delete("/google-link", authenticateToken, asyncHandler(authController.desvincularGoogle as any));
+
 
 export default router;

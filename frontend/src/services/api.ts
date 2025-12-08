@@ -130,7 +130,13 @@ export const authService = {
     const { data } = await api.post('/auth/change-password', { currentPassword, newPassword });
     return data;
   },
+
+  unlinkGoogle: async () => {
+    const { data } = await api.delete('/auth/google-link');
+    return data;
+  },
 };
+
 
 export const transactionService = {
   getAll: async (filters?: TransactionFilters): Promise<Transaction[]> => {

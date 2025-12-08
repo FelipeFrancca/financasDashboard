@@ -52,6 +52,7 @@ model User {
 model Transaction {
   id                String   @id @default(cuid())
   date              DateTime
+  dueDate           DateTime? // Data de vencimento da fatura do cartão
   entryType         String // "Receita" ou "Despesa"
   flowType          String // "Fixa" ou "Variável"
   category          String
@@ -152,6 +153,7 @@ model Dashboard {
   transactions Transaction[]
   recurringTransactions RecurringTransaction[]
   alerts      Alert[]
+  accounts    Account[]         // Contas vinculadas a este dashboard
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -234,12 +236,17 @@ model Account {
   description String? // Descrição adicional
 
   // Cartão de Crédito
-  closingDay  Int?    // Dia de fechamento da fatura
-  dueDay      Int?    // Dia de vencimento da fatura
+  closingDay     Int?    // Dia de fechamento da fatura
+  dueDay         Int?    // Dia de vencimento da fatura
+  cardLastDigits String? // Últimos 4 dígitos do cartão (para match durante importação)
 
   // Relacionamentos
   userId       String
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  dashboardId  String?       // Dashboard ao qual esta conta pertence
+  dashboard    Dashboard?    @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  
   transactions Transaction[] @relation("AccountTransactions")
   transferFrom Transaction[] @relation("TransferToAccount")
 
@@ -254,6 +261,7 @@ model Account {
   @@index([type])
   @@index([userId, isPrimary])
   @@index([deletedAt])
+  @@index([dashboardId])
   @@map("accounts")
 }
 

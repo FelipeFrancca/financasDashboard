@@ -18,6 +18,8 @@ import {
   CircularProgress,
   InputAdornment,
   IconButton,
+  Divider,
+  Chip,
 } from '@mui/material';
 import {
   Edit as EditIcon,
@@ -26,6 +28,9 @@ import {
   Cancel as CancelIcon,
   Visibility,
   VisibilityOff,
+  Google as GoogleIcon,
+  LinkOff as LinkOffIcon,
+  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/api';
@@ -79,6 +84,11 @@ export default function ProfilePage() {
   const [passwordChanging, setPasswordChanging] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  // Google unlink state
+  const [unlinkingGoogle, setUnlinkingGoogle] = useState(false);
+  const [unlinkError, setUnlinkError] = useState<string | null>(null);
+  const [unlinkSuccess, setUnlinkSuccess] = useState(false);
 
   // Sync formData with user when user loads
   useEffect(() => {
@@ -207,6 +217,29 @@ export default function ProfilePage() {
       setPasswordError(errorMessage || 'Erro ao alterar senha');
     } finally {
       setPasswordChanging(false);
+    }
+  };
+
+  const handleUnlinkGoogle = async () => {
+    if (!window.confirm('Tem certeza que deseja desvincular sua conta Google? Você precisará usar email e senha para fazer login.')) {
+      return;
+    }
+
+    setUnlinkingGoogle(true);
+    setUnlinkError(null);
+    setUnlinkSuccess(false);
+
+    try {
+      await authService.unlinkGoogle();
+      setUnlinkSuccess(true);
+      await reloadUser();
+      setTimeout(() => setUnlinkSuccess(false), 5000);
+    } catch (error: any) {
+      console.error('[ProfilePage] Error unlinking Google:', error);
+      const errorMessage = error.response?.data?.error?.message || error.message;
+      setUnlinkError(errorMessage || 'Erro ao desvincular conta Google');
+    } finally {
+      setUnlinkingGoogle(false);
     }
   };
 
@@ -514,8 +547,80 @@ export default function ProfilePage() {
                 )}
               </Button>
             </Box>
+
+            {/* Linked Accounts Section */}
+            <Divider sx={{ my: 4 }} />
+
+            <Typography variant="h6" gutterBottom>
+              Contas Vinculadas
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Gerencie as contas externas vinculadas ao seu perfil
+            </Typography>
+
+            {unlinkSuccess && (
+              <Alert severity="success" sx={{ mb: 3 }}>
+                Conta Google desvinculada com sucesso!
+              </Alert>
+            )}
+
+            {unlinkError && (
+              <Alert severity="error" sx={{ mb: 3 }}>
+                {unlinkError}
+              </Alert>
+            )}
+
+            <Card variant="outlined">
+              <CardContent sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <GoogleIcon sx={{ fontSize: 32, color: '#4285F4' }} />
+                  <Box>
+                    <Typography variant="subtitle1" fontWeight={600}>
+                      Google
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {(user as any)?.hasGoogleLinked
+                        ? 'Conta vinculada - você pode fazer login com Google'
+                        : 'Nenhuma conta Google vinculada'}
+                    </Typography>
+                  </Box>
+                </Box>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  {(user as any)?.hasGoogleLinked ? (
+                    <>
+                      <Chip
+                        icon={<CheckCircleIcon />}
+                        label="Vinculada"
+                        color="success"
+                        size="small"
+                      />
+                      <Button
+                        variant="outlined"
+                        color="error"
+                        size="small"
+                        startIcon={unlinkingGoogle ? <CircularProgress size={16} /> : <LinkOffIcon />}
+                        onClick={handleUnlinkGoogle}
+                        disabled={unlinkingGoogle || !(user as any)?.hasPassword}
+                      >
+                        Desvincular
+                      </Button>
+                    </>
+                  ) : (
+                    <Chip label="Não vinculada" size="small" variant="outlined" />
+                  )}
+                </Box>
+              </CardContent>
+
+              {(user as any)?.hasGoogleLinked && !(user as any)?.hasPassword && (
+                <Alert severity="warning" sx={{ m: 2, mt: 0 }}>
+                  Você precisa definir uma senha antes de desvincular o Google - é sua única forma de login atualmente.
+                </Alert>
+              )}
+            </Card>
           </Box>
         </TabPanel>
+
       </Paper>
     </Container>
   );

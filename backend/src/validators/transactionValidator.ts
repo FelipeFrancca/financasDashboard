@@ -39,6 +39,7 @@ export const createTransactionSchema = z.object({
         required_error: 'Data é obrigatória',
         invalid_type_error: 'Data inválida',
     }),
+    dueDate: z.coerce.date().optional(), // Data de vencimento da fatura (cartão de crédito)
     entryType: z.enum(entryTypes, {
         required_error: 'Tipo de entrada é obrigatório',
         invalid_type_error: 'Tipo de entrada deve ser Receita ou Despesa',
@@ -64,6 +65,7 @@ export const createTransactionSchema = z.object({
     installmentTotal: z.number().int().min(0).default(0),
     installmentNumber: z.number().int().min(0).default(0),
     installmentStatus: z.enum(installmentStatuses).default('N/A'),
+    installmentGroupId: z.string().optional(), // ID para vincular parcelas da mesma compra
     notes: z.string().max(1000, 'Notas muito longas').optional(),
     isTemporary: z.boolean().default(false),
     isThirdParty: z.boolean().default(false),
