@@ -357,8 +357,20 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                 open={open}
                 onClose={isMobile ? handleDrawerToggle : undefined}
                 sx={{
-                    width: drawerWidth,
+                    width: open ? drawerWidth : 0,
                     flexShrink: 0,
+                    whiteSpace: 'nowrap',
+                    boxSizing: 'border-box',
+                    transition: theme.transitions.create('width', {
+                        easing: theme.transitions.easing.sharp,
+                        duration: theme.transitions.duration.leavingScreen,
+                    }),
+                    ...(open && {
+                        transition: theme.transitions.create('width', {
+                            easing: theme.transitions.easing.easeOut,
+                            duration: theme.transitions.duration.enteringScreen,
+                        }),
+                    }),
                     [`& .MuiDrawer-paper`]: {
                         width: drawerWidth,
                         boxSizing: 'border-box',

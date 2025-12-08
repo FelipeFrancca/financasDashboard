@@ -68,22 +68,22 @@ function isPotentialDuplicate(
     const existDate = new Date(existingTx.date).toDateString();
     if (newDate !== existDate) return false;
   }
-  
+
   // Comparar valores (tolerância de R$0.01)
   if (Math.abs(Math.abs(newTx.amount) - Math.abs(existingTx.amount)) > 0.01) return false;
-  
+
   // Comparar descrições (similaridade)
   const newDesc = newTx.description.toLowerCase().trim();
   const existDesc = existingTx.description.toLowerCase().trim();
-  
+
   // Match exato ou parcial (pelo menos 70% das palavras em comum)
   if (newDesc === existDesc) return true;
-  
+
   const newWords = new Set(newDesc.split(/\s+/));
   const existWords = new Set(existDesc.split(/\s+/));
   const commonWords = [...newWords].filter(w => existWords.has(w));
   const similarity = commonWords.length / Math.max(newWords.size, existWords.size);
-  
+
   return similarity >= 0.7;
 }
 
@@ -95,17 +95,61 @@ function findDuplicates(
   existingTransactions: Transaction[]
 ): Map<number, Transaction> {
   const duplicates = new Map<number, Transaction>();
-  
+
   newTransactions.forEach((newTx, index) => {
-    const duplicate = existingTransactions.find(existing => 
+    const duplicate = existingTransactions.find(existing =>
       isPotentialDuplicate(newTx, existing)
     );
     if (duplicate) {
       duplicates.set(index, duplicate);
     }
   });
-  
+
   return duplicates;
+}
+
+/**
+ * Calcula similaridade entre duas strings baseado em palavras em comum
+ */
+function calculateWordSimilarity(str1: string, str2: string): number {
+  const words1 = new Set(str1.toLowerCase().trim().split(/\s+/).filter(w => w.length > 2));
+  const words2 = new Set(str2.toLowerCase().trim().split(/\s+/).filter(w => w.length > 2));
+
+  if (words1.size === 0 || words2.size === 0) return 0;
+
+  const commonWords = [...words1].filter(w => words2.has(w));
+  return commonWords.length / Math.max(words1.size, words2.size);
+}
+
+/**
+ * Encontra transações existentes que podem corresponder a uma nota fiscal
+ * Critérios mais flexíveis que duplicatas: valor exato, data ±5 dias, nome >50% similar
+ */
+function findMatchingTransactions(
+  invoice: { date: string | null; amount: number; merchant: string | null },
+  existingTransactions: Transaction[],
+  dateRangeDays: number = 5
+): Transaction[] {
+  return existingTransactions.filter(existing => {
+    // 1. Valor exato (tolerância R$0.01)
+    if (Math.abs(Math.abs(invoice.amount) - Math.abs(existing.amount)) > 0.01) return false;
+
+    // 2. Data dentro do range (±N dias)
+    if (invoice.date && existing.date) {
+      const invoiceDate = new Date(invoice.date);
+      const existingDate = new Date(existing.date);
+      const diffDays = Math.abs(invoiceDate.getTime() - existingDate.getTime()) / (1000 * 60 * 60 * 24);
+      if (diffDays > dateRangeDays) return false;
+    }
+
+    // 3. Similaridade de nome (>50%) - se tiver nome
+    if (invoice.merchant) {
+      const similarity = calculateWordSimilarity(invoice.merchant, existing.description);
+      if (similarity < 0.3) return false; // Threshold baixo para não perder matches
+    }
+
+    return true;
+  });
 }
 
 interface ExtractedItem {
@@ -178,6 +222,11 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
   const [selectedTransactions, setSelectedTransactions] = useState<Set<number>>(new Set());
   const [duplicateWarnings, setDuplicateWarnings] = useState<Map<number, Transaction>>(new Map());
   const [loadingTime, setLoadingTime] = useState(0);
+
+  // Invoice-transaction merge state
+  const [matchingTransactions, setMatchingTransactions] = useState<Transaction[]>([]);
+  const [showMergeDialog, setShowMergeDialog] = useState(false);
+  const [, setSelectedMergeTarget] = useState<Transaction | null>(null);
 
   // Track loading time for user feedback
   useEffect(() => {
@@ -304,17 +353,36 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     if (!file) return;
 
     setLoading(true);
+    setMatchingTransactions([]);
+    setShowMergeDialog(false);
+
     try {
       const categoryNames = categories?.map((c: Category) => c.name) || [];
       const data = await ingestionService.upload(file, categoryNames);
       setResult(data);
-      
-      // Se for multi-transação, seleciona todas por padrão
+
+      // Se for multi-transação (fatura), seleciona todas por padrão
       if (data.isMultiTransaction && data.transactions) {
         setSelectedTransactions(new Set(data.transactions.map((_: ExtractedTransaction, i: number) => i)));
+      } else {
+        // Single transaction (nota fiscal) - verificar se já existe uma transação similar
+        const matches = findMatchingTransactions(
+          {
+            date: data.date,
+            amount: data.amount,
+            merchant: data.merchant
+          },
+          existingTransactions
+        );
+
+        if (matches.length > 0) {
+          setMatchingTransactions(matches);
+          setShowMergeDialog(true);
+          showSuccess(`Documento processado! Encontrada(s) ${matches.length} transação(ões) compatível(is).`);
+        } else {
+          showSuccess('Documento processado com sucesso!');
+        }
       }
-      
-      showSuccess('Documento processado com sucesso!');
     } catch (error: any) {
       showErrorWithRetry(error, handleUploadAI);
     } finally {
@@ -328,10 +396,10 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     setSaving(true);
     try {
       let finalCategory = result.category || 'Outros';
-      
+
       // Verifica se a categoria existe
       const categoryExists = categories?.some((c: Category) => c.name.toLowerCase() === finalCategory.toLowerCase());
-      
+
       // Se não existe e não é "Outros", pergunta se quer criar
       if (finalCategory !== 'Outros' && !categoryExists) {
         const confirmed = await showConfirm(
@@ -378,13 +446,13 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
           quantity: item.quantity || 1
         })) || undefined,
       };
-      
+
       if (onSaveAITransaction) {
         onSaveAITransaction(transactionData);
       } else {
         await transactionService.create(transactionData);
       }
-      
+
       showSuccess('Transação salva com sucesso!');
       handleClear();
     } catch (error) {
@@ -409,6 +477,9 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     setCsvPreview(null);
     setSelectedTransactions(new Set());
     setDuplicateWarnings(new Map());
+    setMatchingTransactions([]);
+    setShowMergeDialog(false);
+    setSelectedMergeTarget(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -437,7 +508,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
    */
   const parseInstallmentInfo = (info: string | null | undefined): { current: number; total: number } | null => {
     if (!info) return null;
-    
+
     // Padrões comuns: "Parcela 02 de 12", "02/12", "2/12", "Parcela 2 de 12"
     const patterns = [
       /parcela\s*(\d+)\s*de\s*(\d+)/i,
@@ -445,7 +516,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
       /(\d+)\s*de\s*(\d+)/i,
       /(\d+)\s*\/\s*(\d+)/i,
     ];
-    
+
     for (const pattern of patterns) {
       const match = info.match(pattern);
       if (match) {
@@ -456,7 +527,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         }
       }
     }
-    
+
     return null;
   };
 
@@ -501,13 +572,13 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     // Filtrar apenas as que não existem
     const categoriesToCreate: string[] = [];
     const normalizedExistingCategories = new Set(
-        categories?.map((c: Category) => c.name.toLowerCase()) || []
+      categories?.map((c: Category) => c.name.toLowerCase()) || []
     );
 
     uniqueCategories.forEach(cat => {
-        if (!normalizedExistingCategories.has(cat.toLowerCase())) {
-            categoriesToCreate.push(cat);
-        }
+      if (!normalizedExistingCategories.has(cat.toLowerCase())) {
+        categoriesToCreate.push(cat);
+      }
     });
 
     // Mapa de substituição (caso o usuário negue a criação ou ocorra erro)
@@ -515,42 +586,42 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
 
     // Se houver categorias novas, perguntar ao usuário
     if (categoriesToCreate.length > 0) {
-        const categoryList = categoriesToCreate.map(c => `- ${c} (${categoryTypes.get(c) || 'Despesa'})`).join('\n');
-        const confirmed = await showConfirm(
-            `A importação contém ${categoriesToCreate.length} categorias que ainda não existem:\n\n${categoryList}\n\nDeseja criá-las automaticamente?`,
-            {
-                title: 'Novas Categorias Detectadas',
-                confirmButtonText: 'Sim, criar todas',
-                cancelButtonText: 'Não, usar "Outros"',
-                icon: 'question'
-            }
-        );
-
-        if (confirmed.isConfirmed) {
-            setSaving(true);
-            try {
-                await Promise.all(categoriesToCreate.map(catName => 
-                    createCategory.mutateAsync({
-                        data: { 
-                          name: catName, 
-                          type: categoryTypes.get(catName) || 'Despesa'
-                        },
-                        dashboardId
-                    })
-                ));
-                showSuccess(`${categoriesToCreate.length} categorias criadas com sucesso!`, { timer: 2000 });
-            } catch (err) {
-                console.error('Erro ao criar categorias em lote:', err);
-                showWarning('Ocorreu um erro ao criar algumas categorias. Elas serão convertidas para "Outros".');
-                categoriesToCreate.forEach(cat => categoryReplacementMap.set(cat, 'Outros'));
-            } finally {
-                setSaving(false);
-            }
-        } else {
-             categoriesToCreate.forEach(cat => categoryReplacementMap.set(cat, 'Outros'));
+      const categoryList = categoriesToCreate.map(c => `- ${c} (${categoryTypes.get(c) || 'Despesa'})`).join('\n');
+      const confirmed = await showConfirm(
+        `A importação contém ${categoriesToCreate.length} categorias que ainda não existem:\n\n${categoryList}\n\nDeseja criá-las automaticamente?`,
+        {
+          title: 'Novas Categorias Detectadas',
+          confirmButtonText: 'Sim, criar todas',
+          cancelButtonText: 'Não, usar "Outros"',
+          icon: 'question'
         }
+      );
+
+      if (confirmed.isConfirmed) {
+        setSaving(true);
+        try {
+          await Promise.all(categoriesToCreate.map(catName =>
+            createCategory.mutateAsync({
+              data: {
+                name: catName,
+                type: categoryTypes.get(catName) || 'Despesa'
+              },
+              dashboardId
+            })
+          ));
+          showSuccess(`${categoriesToCreate.length} categorias criadas com sucesso!`, { timer: 2000 });
+        } catch (err) {
+          console.error('Erro ao criar categorias em lote:', err);
+          showWarning('Ocorreu um erro ao criar algumas categorias. Elas serão convertidas para "Outros".');
+          categoriesToCreate.forEach(cat => categoryReplacementMap.set(cat, 'Outros'));
+        } finally {
+          setSaving(false);
+        }
+      } else {
+        categoriesToCreate.forEach(cat => categoryReplacementMap.set(cat, 'Outros'));
+      }
     }
-    
+
     // Preparar transações para salvar (incluindo parcelas futuras)
     const allTransactionsToSave: Array<{
       description: string;
@@ -572,23 +643,32 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
 
     for (const tx of selectedTxs) {
       const installment = parseInstallmentInfo(tx.installmentInfo);
-      const baseDate = tx.date ? new Date(tx.date) : new Date();
       const description = tx.merchant || tx.description || 'Transação';
       const amount = Math.abs(tx.amount); // Parcelas são sempre positivas
       const entryType = tx.amount < 0 ? 'Receita' as const : 'Despesa' as const;
-      
+
       const originalCat = tx.category || 'Outros';
       const finalCategory = categoryReplacementMap.get(originalCat) || originalCat;
+
+      // Data original da transação (quando a compra foi feita)
+      const transactionDate = tx.date ? new Date(tx.date) : new Date();
+
+      // Data de vencimento da fatura (quando será cobrada)
+      const statementDueDate = result.statementInfo?.dueDate
+        ? new Date(result.statementInfo.dueDate)
+        : transactionDate;
 
       if (installment && installment.total > 1) {
         // Gerar ID único para vincular todas as parcelas deste grupo
         const groupId = crypto.randomUUID();
-        
-        // Transação parcelada - criar todas as parcelas
+
+        // Transação parcelada - criar apenas a parcela atual e futuras
+        // NÃO criar parcelas passadas (já foram pagas em faturas anteriores)
         for (let i = installment.current; i <= installment.total; i++) {
           const monthsToAdd = i - installment.current;
-          const installmentDate = addMonths(baseDate, monthsToAdd);
-          
+          // Usar a data de vencimento da fatura como base para cálculo das parcelas
+          const installmentDate = addMonths(statementDueDate, monthsToAdd);
+
           allTransactionsToSave.push({
             description: `${description} (${i}/${installment.total})`,
             amount,
@@ -602,18 +682,22 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
             installmentGroupId: groupId,
             isTemporary: false,
             dashboardId,
-            notes: i === installment.current 
-              ? `Parcela atual importada da fatura`
-              : `Parcela futura gerada automaticamente`,
+            notes: i === installment.current
+              ? `Compra em ${transactionDate.toLocaleDateString('pt-BR')} | Vencimento: ${statementDueDate.toLocaleDateString('pt-BR')}`
+              : `Parcela futura | Vencimento: ${installmentDate.toLocaleDateString('pt-BR')}`,
           });
           totalInstallmentsCreated++;
         }
       } else {
-        // Transação única (sem parcelamento)
+        // Transação única (sem parcelamento) - usa data original da transação
+        const dueDateNote = result.statementInfo?.dueDate
+          ? ` | Vencimento da fatura: ${statementDueDate.toLocaleDateString('pt-BR')}`
+          : '';
+
         allTransactionsToSave.push({
           description,
           amount,
-          date: baseDate.toISOString(),
+          date: transactionDate.toISOString(),
           entryType,
           flowType: 'Variável' as const,
           category: finalCategory,
@@ -622,7 +706,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
           installmentStatus: 'Paga' as const,
           isTemporary: false,
           dashboardId,
-          notes: tx.installmentInfo || undefined,
+          notes: (tx.installmentInfo || '') + dueDateNote || undefined,
         });
       }
     }
@@ -630,16 +714,16 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     // Verificar duplicatas antes de salvar
     if (existingTransactions.length > 0) {
       const duplicates = findDuplicates(allTransactionsToSave, existingTransactions);
-      
+
       if (duplicates.size > 0) {
         const duplicateCount = duplicates.size;
         const duplicateList = [...duplicates.entries()].slice(0, 3).map(([idx]) => {
           const tx = allTransactionsToSave[idx];
-          return `- ${tx.description} (${formatCurrency(tx.amount)})`;  
+          return `- ${tx.description} (${formatCurrency(tx.amount)})`;
         }).join('\n');
-        
+
         const moreText = duplicateCount > 3 ? `\n...e mais ${duplicateCount - 3}` : '';
-        
+
         const confirmed = await showConfirm(
           `Foram encontradas ${duplicateCount} possíveis transações duplicadas:\n\n${duplicateList}${moreText}\n\nDeseja importar mesmo assim?`,
           {
@@ -661,8 +745,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     setSaving(true);
     try {
       await transactionService.createMany(allTransactionsToSave);
-      
-      const installmentsMsg = totalInstallmentsCreated > selectedTransactions.size 
+
+      const installmentsMsg = totalInstallmentsCreated > selectedTransactions.size
         ? ` (incluindo ${totalInstallmentsCreated - selectedTransactions.size} parcelas futuras)`
         : '';
       showSuccess(`${allTransactionsToSave.length} transações importadas com sucesso!${installmentsMsg}`);
@@ -713,15 +797,196 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     return new Date(dateString).toLocaleDateString('pt-BR');
   };
 
+  /**
+   * Handler para mesclar dados da nota fiscal com uma transação existente
+   */
+  const handleMergeWithTransaction = async (targetTransaction: Transaction) => {
+    if (!result || !dashboardId) return;
+
+    setSaving(true);
+    try {
+      // Atualizar a transação existente com os dados da nota fiscal
+      const updateData: Partial<Transaction> = {
+        // Adicionar itens da NF (se tiver)
+        items: result.items?.map(item => ({
+          description: item.description,
+          quantity: item.quantity || 1,
+          unitPrice: item.unitPrice,
+          totalPrice: item.totalPrice,
+        })),
+        // Atualizar notas com informações adicionais
+        notes: [
+          targetTransaction.notes || '',
+          `📄 Dados mesclados de nota fiscal:`,
+          result.merchant ? `Comerciante: ${result.merchant}` : '',
+          result.date ? `Data NF: ${formatDate(result.date)}` : '',
+        ].filter(Boolean).join('\n'),
+      };
+
+      await transactionService.update(targetTransaction.id, updateData);
+
+      showSuccess(`Nota fiscal mesclada com "${targetTransaction.description}"! ${result.items?.length || 0} itens adicionados.`);
+      handleClear();
+    } catch (error) {
+      showError(error, { title: 'Erro', text: 'Não foi possível mesclar os dados.' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /**
+   * Handler para criar como nova transação (ignorar matches)
+   */
+  const handleCreateNewTransaction = () => {
+    setShowMergeDialog(false);
+    setMatchingTransactions([]);
+    // O fluxo normal de handleSaveAITransaction será usado
+  };
+
+  /**
+   * Renderiza o diálogo de merge quando há matches
+   */
+  const renderMergeDialog = () => {
+    if (!showMergeDialog || matchingTransactions.length === 0 || !result) return null;
+
+    return (
+      <Paper
+        elevation={3}
+        sx={{
+          p: 3,
+          mb: 3,
+          borderRadius: 2,
+          border: `2px solid ${theme.palette.warning.main}`,
+          background: alpha(theme.palette.warning.main, 0.05),
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <AutoAwesome color="warning" />
+          <Typography variant="h6" fontWeight={600}>
+            🔗 Transação Compatível Encontrada!
+          </Typography>
+        </Box>
+
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Esta nota fiscal pode corresponder a uma transação já existente.
+          Deseja mesclar os dados ou criar uma nova transação?
+        </Typography>
+
+        {/* Comparação lado a lado */}
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 3 }}>
+          {/* Dados da Nota Fiscal */}
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+            <Typography variant="subtitle2" color="primary" fontWeight={600} gutterBottom>
+              📄 Nota Fiscal (Nova)
+            </Typography>
+            <List dense disablePadding>
+              <ListItem disablePadding sx={{ py: 0.5 }}>
+                <ListItemText
+                  primary="Comerciante"
+                  secondary={result.merchant || 'Não identificado'}
+                  primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
+                  secondaryTypographyProps={{ fontWeight: 500 }}
+                />
+              </ListItem>
+              <ListItem disablePadding sx={{ py: 0.5 }}>
+                <ListItemText
+                  primary="Valor"
+                  secondary={formatCurrency(result.amount)}
+                  primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
+                  secondaryTypographyProps={{ fontWeight: 600, color: 'error.main' }}
+                />
+              </ListItem>
+              <ListItem disablePadding sx={{ py: 0.5 }}>
+                <ListItemText
+                  primary="Data"
+                  secondary={formatDate(result.date)}
+                  primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
+                />
+              </ListItem>
+              {result.items && result.items.length > 0 && (
+                <ListItem disablePadding sx={{ py: 0.5 }}>
+                  <ListItemText
+                    primary="Itens"
+                    secondary={`${result.items.length} itens detalhados`}
+                    primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
+                    secondaryTypographyProps={{ color: 'success.main', fontWeight: 500 }}
+                  />
+                </ListItem>
+              )}
+            </List>
+          </Paper>
+
+          {/* Transações compatíveis */}
+          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+            <Typography variant="subtitle2" color="secondary" fontWeight={600} gutterBottom>
+              💳 Transação Existente
+            </Typography>
+            {matchingTransactions.slice(0, 3).map((tx, idx) => (
+              <Box key={tx.id} sx={{ mb: idx < matchingTransactions.length - 1 ? 2 : 0 }}>
+                <List dense disablePadding>
+                  <ListItem disablePadding sx={{ py: 0.5 }}>
+                    <ListItemText
+                      primary="Descrição"
+                      secondary={tx.description}
+                      primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
+                      secondaryTypographyProps={{ fontWeight: 500 }}
+                    />
+                  </ListItem>
+                  <ListItem disablePadding sx={{ py: 0.5 }}>
+                    <ListItemText
+                      primary="Valor"
+                      secondary={formatCurrency(tx.amount)}
+                      primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
+                      secondaryTypographyProps={{ fontWeight: 600, color: 'error.main' }}
+                    />
+                  </ListItem>
+                  <ListItem disablePadding sx={{ py: 0.5 }}>
+                    <ListItemText
+                      primary="Data"
+                      secondary={formatDate(tx.date as string)}
+                      primaryTypographyProps={{ variant: 'caption', color: 'text.secondary' }}
+                    />
+                  </ListItem>
+                </List>
+                <Button
+                  variant="contained"
+                  size="small"
+                  fullWidth
+                  onClick={() => handleMergeWithTransaction(tx)}
+                  disabled={saving}
+                  startIcon={saving ? <CircularProgress size={16} /> : <CheckCircle />}
+                  sx={{ mt: 1, borderRadius: 2 }}
+                >
+                  Mesclar com esta
+                </Button>
+              </Box>
+            ))}
+          </Paper>
+        </Box>
+
+        {/* Ações */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={handleCreateNewTransaction}
+            startIcon={<Add />}
+          >
+            Criar Nova Transação
+          </Button>
+        </Box>
+      </Paper>
+    );
+  };
+
 
 
   return (
-    <Card 
+    <Card
       elevation={4}
-      sx={{ 
+      sx={{
         borderRadius: 3,
         overflow: 'hidden',
-        background: theme.palette.mode === 'dark' 
+        background: theme.palette.mode === 'dark'
           ? `linear-gradient(145deg, ${alpha(theme.palette.primary.dark, 0.15)} 0%, ${alpha(theme.palette.background.paper, 0.95)} 100%)`
           : theme.palette.background.paper,
         border: `1px solid ${alpha(theme.palette.primary.main, 0.1)}`,
@@ -812,7 +1077,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                 p: { xs: 3, sm: 5 },
                 textAlign: 'center',
                 cursor: 'pointer',
-                bgcolor: dragActive 
+                bgcolor: dragActive
                   ? alpha(theme.palette.primary.main, 0.08)
                   : alpha(theme.palette.background.default, 0.5),
                 transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
@@ -849,12 +1114,12 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                   </Box>
                   <Typography variant="h6" fontWeight={600}>{file.name}</Typography>
                   <Box sx={{ width: '100%', maxWidth: 300 }}>
-                    <LinearProgress 
-                      sx={{ 
-                        height: 8, 
+                    <LinearProgress
+                      sx={{
+                        height: 8,
                         borderRadius: 4,
                         bgcolor: alpha(theme.palette.primary.main, 0.1),
-                      }} 
+                      }}
                     />
                   </Box>
                   <Typography variant="body2" color="text.secondary" textAlign="center">
@@ -874,7 +1139,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                     ) : (
                       <Image sx={{ fontSize: 72, color: 'primary.main' }} />
                     )}
-                    <Chip 
+                    <Chip
                       size="small"
                       label={`${(file.size / 1024 / 1024).toFixed(2)} MB`}
                       sx={{ position: 'absolute', bottom: -8, left: '50%', transform: 'translateX(-50%)' }}
@@ -891,7 +1156,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                       }}
                       disabled={loading}
                       startIcon={loading ? <CircularProgress size={20} /> : <AutoAwesome />}
-                      sx={{ 
+                      sx={{
                         px: 4,
                         py: 1.5,
                         fontWeight: 600,
@@ -931,15 +1196,15 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                       mb: 1,
                     }}
                   >
-                    <CloudUpload 
-                      sx={{ 
-                        fontSize: 56, 
+                    <CloudUpload
+                      sx={{
+                        fontSize: 56,
                         color: 'primary.main',
-                      }} 
+                      }}
                     />
                   </Box>
-                  <Typography 
-                    variant="h5" 
+                  <Typography
+                    variant="h5"
                     fontWeight={700}
                     sx={{
                       background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
@@ -955,25 +1220,25 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                   </Typography>
                   <Stack direction="row" spacing={1.5} sx={{ mt: 1 }}>
                     {mode === 'csv' ? (
-                      <Chip 
-                        icon={<TableChart />} 
-                        label="CSV" 
+                      <Chip
+                        icon={<TableChart />}
+                        label="CSV"
                         variant="outlined"
                         color="success"
                         sx={{ fontWeight: 600 }}
                       />
                     ) : (
                       <>
-                        <Chip 
-                          icon={<PictureAsPdf />} 
-                          label="PDF" 
+                        <Chip
+                          icon={<PictureAsPdf />}
+                          label="PDF"
                           variant="outlined"
                           color="error"
                           sx={{ fontWeight: 600 }}
                         />
-                        <Chip 
-                          icon={<CameraAlt />} 
-                          label="JPG/PNG" 
+                        <Chip
+                          icon={<CameraAlt />}
+                          label="JPG/PNG"
                           variant="outlined"
                           color="primary"
                           sx={{ fontWeight: 600 }}
@@ -994,8 +1259,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         {csvPreview && csvPreview.length > 0 && (
           <Fade in timeout={500}>
             <Box>
-              <Alert 
-                severity="success" 
+              <Alert
+                severity="success"
                 icon={<CheckCircle fontSize="inherit" />}
                 sx={{ mb: 3, fontWeight: 500, borderRadius: 2 }}
                 action={
@@ -1007,19 +1272,19 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                 ✨ {csvPreview.length} transações encontradas! Revise e importe.
               </Alert>
 
-              <Paper 
-                variant="outlined" 
-                sx={{ 
-                  p: 2, 
-                  borderRadius: 2, 
-                  maxHeight: 300, 
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  maxHeight: 300,
                   overflow: 'auto',
                   mb: 3,
                 }}
               >
                 <List dense disablePadding>
                   {csvPreview.slice(0, 10).map((t, index) => (
-                    <ListItem 
+                    <ListItem
                       key={index}
                       divider={index < Math.min(csvPreview.length, 10) - 1}
                       sx={{ py: 1.5 }}
@@ -1029,7 +1294,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                         secondary={`${t.entryType} • ${t.category}`}
                         primaryTypographyProps={{ fontWeight: 500 }}
                       />
-                      <Chip 
+                      <Chip
                         label={formatCurrency(t.amount || 0)}
                         size="small"
                         color={t.entryType === 'Receita' ? 'success' : 'error'}
@@ -1054,7 +1319,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                   size="large"
                   startIcon={<Add />}
                   onClick={handleImportCSV}
-                  sx={{ 
+                  sx={{
                     px: 4,
                     py: 1.5,
                     fontWeight: 600,
@@ -1085,8 +1350,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
               {/* Multi-Transaction View (Credit Card Statement) */}
               {result.isMultiTransaction && result.transactions ? (
                 <>
-                  <Alert 
-                    severity="success" 
+                  <Alert
+                    severity="success"
                     icon={<CreditCard fontSize="inherit" />}
                     sx={{ mb: 3, fontWeight: 500, borderRadius: 2 }}
                   >
@@ -1095,11 +1360,11 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
 
                   {/* Statement Info Header */}
                   {result.statementInfo && (
-                    <Paper 
-                      variant="outlined" 
-                      sx={{ 
-                        p: 2, 
-                        mb: 3, 
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 2,
+                        mb: 3,
                         borderRadius: 2,
                         background: alpha(theme.palette.primary.main, 0.05),
                       }}
@@ -1158,7 +1423,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                         Desmarcar
                       </Button>
                     </Box>
-                    <Chip 
+                    <Chip
                       label={`${selectedTransactions.size} de ${result.transactions.length} selecionadas`}
                       color="primary"
                       variant="outlined"
@@ -1166,11 +1431,11 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                   </Box>
 
                   {/* Transaction List */}
-                  <Paper 
-                    variant="outlined" 
-                    sx={{ 
-                      borderRadius: 2, 
-                      maxHeight: 400, 
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      borderRadius: 2,
+                      maxHeight: 400,
                       overflow: 'auto',
                       mb: 3,
                     }}
@@ -1179,15 +1444,15 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                       {result.transactions.map((tx, index) => {
                         const isDuplicate = duplicateWarnings.has(index);
                         return (
-                          <ListItem 
+                          <ListItem
                             key={index}
                             divider={index < result.transactions!.length - 1}
-                            sx={{ 
+                            sx={{
                               py: 1.5,
-                              bgcolor: isDuplicate 
+                              bgcolor: isDuplicate
                                 ? alpha(theme.palette.warning.main, 0.15)
-                                : selectedTransactions.has(index) 
-                                  ? alpha(theme.palette.primary.main, 0.08) 
+                                : selectedTransactions.has(index)
+                                  ? alpha(theme.palette.primary.main, 0.08)
                                   : 'transparent',
                               borderLeft: isDuplicate ? `4px solid ${theme.palette.warning.main}` : 'none',
                               '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.04) },
@@ -1195,15 +1460,15 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                             secondaryAction={
                               <Stack direction="row" spacing={1} alignItems="center">
                                 {isDuplicate && (
-                                  <Chip 
-                                    size="small" 
-                                    label="⚠️ Duplicata?" 
-                                    color="warning" 
+                                  <Chip
+                                    size="small"
+                                    label="⚠️ Duplicata?"
+                                    color="warning"
                                     sx={{ fontSize: '0.65rem' }}
                                   />
                                 )}
-                                <Typography 
-                                  fontWeight={600} 
+                                <Typography
+                                  fontWeight={600}
                                   color={tx.amount < 0 ? 'success.main' : 'text.primary'}
                                 >
                                   {tx.amount < 0 ? '+' : ''}{formatCurrency(Math.abs(tx.amount))}
@@ -1252,11 +1517,11 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                   </Paper>
 
                   {/* Summary and Save */}
-                  <Paper 
-                    variant="outlined" 
-                    sx={{ 
-                      p: 2, 
-                      borderRadius: 2, 
+                  <Paper
+                    variant="outlined"
+                    sx={{
+                      p: 2,
+                      borderRadius: 2,
                       mb: 2,
                       background: alpha(theme.palette.success.main, 0.05),
                     }}
@@ -1285,7 +1550,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                       startIcon={saving ? <CircularProgress size={20} /> : <Save />}
                       onClick={handleSaveMultipleTransactions}
                       disabled={saving || selectedTransactions.size === 0}
-                      sx={{ 
+                      sx={{
                         px: 4,
                         py: 1.5,
                         fontWeight: 600,
@@ -1310,13 +1575,16 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
               ) : (
                 /* Single Transaction View (Original) */
                 <>
-                  <Alert 
-                    severity="success" 
+                  <Alert
+                    severity="success"
                     icon={<CheckCircle fontSize="inherit" />}
                     sx={{ mb: 3, fontWeight: 500, borderRadius: 2 }}
                   >
                     ✨ Dados extraídos! Revise as informações antes de salvar.
                   </Alert>
+
+                  {/* Merge Dialog - shows when matching transactions found */}
+                  {renderMergeDialog()}
 
                   <Paper variant="outlined" sx={{ p: { xs: 2, sm: 4 }, borderRadius: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3, flexWrap: 'wrap', gap: 2 }}>
@@ -1328,8 +1596,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                           {result.merchant || 'Não identificado'}
                         </Typography>
                       </Box>
-                      <Chip 
-                        label={result.extractionMethod === 'ai' ? '🤖 IA Generativa' : '⚡ Regex'} 
+                      <Chip
+                        label={result.extractionMethod === 'ai' ? '🤖 IA Generativa' : '⚡ Regex'}
                         color={result.extractionMethod === 'ai' ? 'secondary' : 'primary'}
                         sx={{ fontWeight: 600 }}
                       />
@@ -1348,8 +1616,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                         <Typography variant="overline" color="text.secondary" fontWeight={600}>
                           💰 Valor
                         </Typography>
-                        <Typography 
-                          variant="h5" 
+                        <Typography
+                          variant="h5"
                           fontWeight={700}
                           sx={{
                             background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.secondary.main} 100%)`,
@@ -1366,10 +1634,10 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                           🎯 Confiança
                         </Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <CircularProgress 
-                            variant="determinate" 
-                            value={result.confidence * 100} 
-                            size={32} 
+                          <CircularProgress
+                            variant="determinate"
+                            value={result.confidence * 100}
+                            size={32}
                             thickness={5}
                             color={result.confidence > 0.8 ? 'success' : 'warning'}
                           />
@@ -1394,7 +1662,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                     {result.items && result.items.length > 0 && (
                       <>
                         <Divider sx={{ my: 2 }} />
-                        <Box 
+                        <Box
                           sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer', mb: 1 }}
                           onClick={() => setShowItems(!showItems)}
                         >
@@ -1432,7 +1700,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                         startIcon={saving ? <CircularProgress size={20} /> : <Save />}
                         onClick={handleSaveAITransaction}
                         disabled={saving}
-                        sx={{ 
+                        sx={{
                           px: 4,
                           py: 1.5,
                           fontWeight: 600,

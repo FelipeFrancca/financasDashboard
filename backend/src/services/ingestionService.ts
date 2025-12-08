@@ -571,6 +571,13 @@ export class IngestionService {
         return `Você é um especialista em extração de dados financeiros de documentos brasileiros.
 ${categoriesStr}
 
+REGRAS DE CATEGORIA:
+- SEMPRE sugira categorias em PORTUGUÊS BRASILEIRO
+- Se não houver categorias disponíveis, use uma destas: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Compras, Assinaturas, Serviços, Outros
+- NUNCA use categorias em inglês (ex: Shopping, Food, Transport, Entertainment, etc.)
+- Para compras online (Amazon, Mercado Livre, etc.), use "Compras"
+- Para streaming/apps (Netflix, Spotify, etc.), use "Assinaturas"
+
 ANALISE O DOCUMENTO E DETERMINE O TIPO:
 
 **TIPO 1 - FATURA DE CARTÃO DE CRÉDITO**
