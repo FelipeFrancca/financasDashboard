@@ -501,7 +501,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     // Filtrar apenas as que não existem
     const categoriesToCreate: string[] = [];
     const normalizedExistingCategories = new Set(
-        categories?.map(c => c.name.toLowerCase()) || []
+        categories?.map((c: Category) => c.name.toLowerCase()) || []
     );
 
     uniqueCategories.forEach(cat => {
