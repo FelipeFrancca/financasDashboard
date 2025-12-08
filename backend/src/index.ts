@@ -178,12 +178,20 @@ if (isProduction) {
     etag: true,
   }));
 
-  // Catch-all apenas para rotas não-API (SPA fallback)
+  // Catch-all apenas para rotas não-API e sem extensão de arquivo (SPA fallback)
   app.get("*", (req, res, next) => {
     // Se for uma rota de API, passa para o próximo handler
     if (req.path.startsWith('/api')) {
       return next();
     }
+
+    // Se for um arquivo com extensão (asset), retorna 404 ao invés de index.html
+    // Isso evita que arquivos .js/.css ausentes retornem HTML com MIME type incorreto
+    const hasExtension = /\.[a-zA-Z0-9]+$/.test(req.path);
+    if (hasExtension) {
+      return res.status(404).send('Not Found');
+    }
+
     res.sendFile(path.join(publicPath, "index.html"));
   });
 }
