@@ -166,10 +166,11 @@ const rateLimiter = new RateLimiter();
  * Presets de rate limiting
  */
 
-// Rate limit padrão: 100 requisições por 15 minutos
+// Rate limit padrão: 500 requisições por 15 minutos
+// (100 era muito baixo para SPAs que fazem múltiplas chamadas por navegação)
 export const generalLimiter = rateLimiter.limit({
     windowMs: 15 * 60 * 1000, // 15 minutos
-    maxRequests: 100,
+    maxRequests: 500,
     message: 'Muitas requisições. Tente novamente em alguns minutos.',
 });
 

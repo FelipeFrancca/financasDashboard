@@ -353,6 +353,45 @@ export async function resetPassword(email: string, code: string, newPassword: st
   });
 }
 
+// Change password (authenticated user)
+export async function changePassword(userId: string, currentPassword: string, newPassword: string): Promise<void> {
+  const user = await (prisma as any).user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw new AppError("Usuário não encontrado", 404, true, "USER_NOT_FOUND");
+  }
+
+  // Users who registered via Google may not have a password
+  if (!user.password) {
+    throw new AppError(
+      "Sua conta foi criada via Google. Para definir uma senha, use 'Esqueci minha senha' na tela de login.",
+      400,
+      true,
+      "NO_PASSWORD_SET"
+    );
+  }
+
+  // Verify current password
+  const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
+
+  if (!isPasswordValid) {
+    throw new AppError("Senha atual incorreta", 401, true, "INVALID_CURRENT_PASSWORD");
+  }
+
+  // Hash and update new password
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await (prisma as any).user.update({
+    where: { id: userId },
+    data: {
+      password: hashedPassword,
+      updatedAt: new Date(),
+    },
+  });
+}
+
 // Get user by ID
 export async function getUserById(userId: string): Promise<Omit<User, "password"> | null> {
   const user = await (prisma as any).user.findUnique({

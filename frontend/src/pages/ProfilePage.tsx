@@ -16,12 +16,16 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  InputAdornment,
+  IconButton,
 } from '@mui/material';
 import {
   Edit as EditIcon,
   PhotoCamera,
   Save as SaveIcon,
   Cancel as CancelIcon,
+  Visibility,
+  VisibilityOff,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { authService } from '../services/api';
@@ -62,6 +66,19 @@ export default function ProfilePage() {
     name: '',
     email: '',
   });
+
+  // Password change state
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordChanging, setPasswordChanging] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
 
   // Sync formData with user when user loads
   useEffect(() => {
@@ -147,6 +164,50 @@ export default function ProfilePage() {
 
   const handleSavePreferences = () => {
     updatePreferences.mutate(localPreferences);
+  };
+
+  const handlePasswordChange = async () => {
+    setPasswordError(null);
+    setPasswordSuccess(false);
+
+    // Validations
+    if (!passwordData.currentPassword) {
+      setPasswordError('Digite sua senha atual');
+      return;
+    }
+    if (!passwordData.newPassword) {
+      setPasswordError('Digite a nova senha');
+      return;
+    }
+    if (passwordData.newPassword.length < 8) {
+      setPasswordError('A nova senha deve ter pelo menos 8 caracteres');
+      return;
+    }
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(passwordData.newPassword)) {
+      setPasswordError('A senha deve conter pelo menos uma letra maiúscula, uma minúscula e um número');
+      return;
+    }
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setPasswordError('As senhas não coincidem');
+      return;
+    }
+
+    setPasswordChanging(true);
+
+    try {
+      await authService.changePassword(passwordData.currentPassword, passwordData.newPassword);
+      setPasswordSuccess(true);
+      setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
+
+      // Hide success message after 5 seconds
+      setTimeout(() => setPasswordSuccess(false), 5000);
+    } catch (error: any) {
+      console.error('[ProfilePage] Error changing password:', error);
+      const errorMessage = error.response?.data?.error?.message || error.response?.data?.message || error.message;
+      setPasswordError(errorMessage || 'Erro ao alterar senha');
+    } finally {
+      setPasswordChanging(false);
+    }
   };
 
   return (
@@ -356,25 +417,101 @@ export default function ProfilePage() {
               Por segurança, você precisará confirmar sua senha atual para definir uma nova.
             </Alert>
 
+            {passwordSuccess && (
+              <Alert severity="success" sx={{ mb: 3 }}>
+                Senha alterada com sucesso!
+              </Alert>
+            )}
+
+            {passwordError && (
+              <Alert severity="error" sx={{ mb: 3 }}>
+                {passwordError}
+              </Alert>
+            )}
+
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               <TextField
                 label="Senha Atual"
-                type="password"
+                type={showCurrentPassword ? 'text' : 'password'}
                 fullWidth
+                value={passwordData.currentPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
+                disabled={passwordChanging}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                        edge="end"
+                      >
+                        {showCurrentPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
               <TextField
                 label="Nova Senha"
-                type="password"
+                type={showNewPassword ? 'text' : 'password'}
                 fullWidth
+                value={passwordData.newPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, newPassword: e.target.value })}
+                disabled={passwordChanging}
+                helperText="Mínimo 8 caracteres, com letra maiúscula, minúscula e número"
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        edge="end"
+                      >
+                        {showNewPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
               <TextField
                 label="Confirmar Nova Senha"
-                type="password"
+                type={showConfirmPassword ? 'text' : 'password'}
                 fullWidth
+                value={passwordData.confirmPassword}
+                onChange={(e) => setPasswordData({ ...passwordData, confirmPassword: e.target.value })}
+                disabled={passwordChanging}
+                error={passwordData.confirmPassword.length > 0 && passwordData.newPassword !== passwordData.confirmPassword}
+                helperText={
+                  passwordData.confirmPassword.length > 0 && passwordData.newPassword !== passwordData.confirmPassword
+                    ? 'As senhas não coincidem'
+                    : ''
+                }
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        edge="end"
+                      >
+                        {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
 
-              <Button variant="contained" sx={{ alignSelf: 'flex-start' }}>
-                Alterar Senha
+              <Button
+                variant="contained"
+                sx={{ alignSelf: 'flex-start' }}
+                onClick={handlePasswordChange}
+                disabled={passwordChanging}
+              >
+                {passwordChanging ? (
+                  <>
+                    <CircularProgress size={20} sx={{ mr: 1, color: 'inherit' }} />
+                    Alterando...
+                  </>
+                ) : (
+                  'Alterar Senha'
+                )}
               </Button>
             </Box>
           </Box>
@@ -383,3 +520,4 @@ export default function ProfilePage() {
     </Container>
   );
 }
+

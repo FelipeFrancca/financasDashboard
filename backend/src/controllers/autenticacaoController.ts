@@ -174,3 +174,18 @@ export const reenviarBoasVindas = async (req: Request, res: Response) => {
         });
     }
 };
+
+export const alterarSenha = async (req: Request, res: Response) => {
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.userId;
+    const { currentPassword, newPassword } = req.body;
+
+    logger.info('Alteração de senha', 'AuthRoute', { userId });
+
+    await authService.changePassword(userId, currentPassword, newPassword);
+
+    res.json({
+        success: true,
+        message: 'Senha alterada com sucesso',
+    });
+};

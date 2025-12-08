@@ -77,7 +77,7 @@ export default function TransactionsTable({
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [openRows, setOpenRows] = useState<Record<string, boolean>>({});
-  
+
   // Third party dialog state
   const [thirdPartyDialogOpen, setThirdPartyDialogOpen] = useState(false);
   const [selectedTransactionForThirdParty, setSelectedTransactionForThirdParty] = useState<Transaction | null>(null);
@@ -144,7 +144,7 @@ export default function TransactionsTable({
 
   const handleThirdPartySave = async () => {
     if (!selectedTransactionForThirdParty || !onThirdPartyUpdate) return;
-    
+
     setIsSubmitting(true);
     try {
       await onThirdPartyUpdate(selectedTransactionForThirdParty.id, {
@@ -160,7 +160,7 @@ export default function TransactionsTable({
 
   const handleThirdPartyRemove = async () => {
     if (!selectedTransactionForThirdParty || !onThirdPartyUpdate) return;
-    
+
     setIsSubmitting(true);
     try {
       await onThirdPartyUpdate(selectedTransactionForThirdParty.id, {
@@ -202,10 +202,10 @@ export default function TransactionsTable({
           action={
             <Stack direction="row" spacing={1} alignItems="center">
               {selectedIds.size > 0 && (
-                <Chip 
-                  label={`${selectedIds.size} selecionadas`} 
-                  size="small" 
-                  color="primary" 
+                <Chip
+                  label={`${selectedIds.size} selecionadas`}
+                  size="small"
+                  color="primary"
                   variant="outlined"
                 />
               )}
@@ -233,10 +233,18 @@ export default function TransactionsTable({
         />
         <CardContent>
           {paginatedTransactions.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography variant="body2" color="text.secondary">
-                Nenhuma transação encontrada
+            <Box sx={{ textAlign: 'center', py: 6 }}>
+              <Typography variant="body1" color="text.secondary" gutterBottom>
+                Nenhuma transação para o período selecionado
               </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Selecione outro mês ou adicione uma nova transação
+              </Typography>
+              {canEdit && (
+                <Button variant="contained" startIcon={<Add />} onClick={onNew} size="small">
+                  Adicionar Transação
+                </Button>
+              )}
             </Box>
           ) : (
             <Stack spacing={2}>
@@ -327,7 +335,7 @@ export default function TransactionsTable({
                         <Divider sx={{ mb: 1 }} />
                         <TransactionItemsEditor
                           items={transaction.items}
-                          onChange={() => {}}
+                          onChange={() => { }}
                           readOnly
                           defaultExpanded={false}
                         />
@@ -341,9 +349,9 @@ export default function TransactionsTable({
                     {canEdit && (
                       <>
                         {onThirdPartyUpdate && (
-                          <IconButton 
-                            size="small" 
-                            onClick={() => handleThirdPartyClick(transaction)} 
+                          <IconButton
+                            size="small"
+                            onClick={() => handleThirdPartyClick(transaction)}
                             color={transaction.isThirdParty ? "primary" : "default"}
                           >
                             {transaction.isThirdParty ? <Person fontSize="small" /> : <PersonAddOutlined fontSize="small" />}
@@ -388,29 +396,29 @@ export default function TransactionsTable({
         action={
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
             {selectedIds.size > 0 && (
-              <Chip 
-                label={`${selectedIds.size} selecionadas`} 
-                size="small" 
-                color="primary" 
+              <Chip
+                label={`${selectedIds.size} selecionadas`}
+                size="small"
+                color="primary"
                 variant="outlined"
                 onDelete={() => onSelectionChange?.(new Set())}
               />
             )}
             {selectedIds.size > 0 && canEdit && onDeleteSelected && (
-              <Button 
-                startIcon={<DeleteSweep />} 
-                onClick={onDeleteSelected} 
-                size="small" 
+              <Button
+                startIcon={<DeleteSweep />}
+                onClick={onDeleteSelected}
+                size="small"
                 variant="outlined"
                 color="error"
               >
                 Excluir ({selectedIds.size})
               </Button>
             )}
-            <Button 
-              startIcon={<FileDownload />} 
-              onClick={handleExportClick} 
-              size="small" 
+            <Button
+              startIcon={<FileDownload />}
+              onClick={handleExportClick}
+              size="small"
               variant="outlined"
             >
               {selectedIds.size > 0 ? `Exportar (${selectedIds.size})` : 'Exportar'}
@@ -451,10 +459,18 @@ export default function TransactionsTable({
             <TableBody>
               {paginatedTransactions.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={onSelectionChange ? 10 : 9} align="center" sx={{ py: 4 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Nenhuma transação encontrada
+                  <TableCell colSpan={onSelectionChange ? 10 : 9} align="center" sx={{ py: 6 }}>
+                    <Typography variant="body1" color="text.secondary" gutterBottom>
+                      Nenhuma transação para o período selecionado
                     </Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Selecione outro mês ou adicione uma nova transação
+                    </Typography>
+                    {canEdit && (
+                      <Button variant="contained" startIcon={<Add />} onClick={onNew} size="small">
+                        Adicionar Transação
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -467,10 +483,10 @@ export default function TransactionsTable({
                         '&:hover': {
                           backgroundColor: theme.palette.action.hover,
                         },
-                        backgroundColor: selectedIds.has(transaction.id) 
-                          ? theme.palette.action.selected 
-                          : openRows[transaction.id] 
-                            ? theme.palette.action.hover 
+                        backgroundColor: selectedIds.has(transaction.id)
+                          ? theme.palette.action.selected
+                          : openRows[transaction.id]
+                            ? theme.palette.action.hover
                             : 'inherit',
                       }}
                       onClick={() => toggleRow(transaction.id)}
@@ -513,7 +529,7 @@ export default function TransactionsTable({
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           {transaction.description}
                           {transaction.isThirdParty && (
-                            <Tooltip 
+                            <Tooltip
                               title={
                                 <Box sx={{ textAlign: 'center' }}>
                                   <Typography variant="body2" fontWeight="bold">Compra de Terceiro</Typography>
@@ -531,11 +547,11 @@ export default function TransactionsTable({
                             </Tooltip>
                           )}
                           {transaction.items && transaction.items.length > 0 && (
-                            <Chip 
-                              label={`${transaction.items.length} itens`} 
-                              size="small" 
-                              variant="outlined" 
-                              sx={{ ml: 1, height: 20, fontSize: '0.7rem' }} 
+                            <Chip
+                              label={`${transaction.items.length} itens`}
+                              size="small"
+                              variant="outlined"
+                              sx={{ ml: 1, height: 20, fontSize: '0.7rem' }}
                             />
                           )}
                         </Box>
@@ -559,8 +575,8 @@ export default function TransactionsTable({
                           <>
                             {onThirdPartyUpdate && (
                               <Tooltip title={transaction.isThirdParty ? `Terceiro: ${transaction.thirdPartyName || 'Sem nome'}` : "Marcar como terceiro"}>
-                                <IconButton 
-                                  size="small" 
+                                <IconButton
+                                  size="small"
                                   onClick={(e) => { e.stopPropagation(); handleThirdPartyClick(transaction); }}
                                   color={transaction.isThirdParty ? "primary" : "default"}
                                 >
@@ -589,7 +605,7 @@ export default function TransactionsTable({
                             {transaction.items && transaction.items.length > 0 ? (
                               <TransactionItemsEditor
                                 items={transaction.items}
-                                onChange={() => {}}
+                                onChange={() => { }}
                                 readOnly
                                 defaultExpanded={true}
                               />
@@ -650,9 +666,9 @@ export default function TransactionsTable({
         </DialogContent>
         <DialogActions>
           {selectedTransactionForThirdParty?.isThirdParty && (
-            <Button 
-              onClick={handleThirdPartyRemove} 
-              color="error" 
+            <Button
+              onClick={handleThirdPartyRemove}
+              color="error"
               disabled={isSubmitting}
               startIcon={<PersonRemove />}
             >
@@ -663,9 +679,9 @@ export default function TransactionsTable({
           <Button onClick={handleThirdPartyClose} disabled={isSubmitting}>
             Cancelar
           </Button>
-          <Button 
-            onClick={handleThirdPartySave} 
-            variant="contained" 
+          <Button
+            onClick={handleThirdPartySave}
+            variant="contained"
             disabled={isSubmitting}
           >
             Salvar

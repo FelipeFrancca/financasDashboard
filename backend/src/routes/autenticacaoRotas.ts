@@ -13,6 +13,7 @@ import {
     forgotPasswordSchema,
     resetPasswordSchema,
     refreshTokenSchema,
+    changePasswordSchema,
 } from "../validators/authValidator";
 
 const router = express.Router();
@@ -64,6 +65,7 @@ router.post("/reset-password", strictLimiter, validateBody(resetPasswordSchema),
 router.post("/refresh", validateBody(refreshTokenSchema), asyncHandler(authController.atualizarToken));
 router.get("/me", authenticateToken, asyncHandler(authController.obterUsuarioAtual as any));
 router.put("/me", authenticateToken, asyncHandler(authController.atualizarUsuarioAtual as any));
+router.post("/change-password", authenticateToken, validateBody(changePasswordSchema), asyncHandler(authController.alterarSenha as any));
 router.post("/resend-welcome", authenticateToken, asyncHandler(authController.reenviarBoasVindas as any));
 
 export default router;

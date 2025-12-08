@@ -20,7 +20,7 @@ import FiltersCard from '../components/FiltersCard';
 import TransactionsTable from '../components/TransactionsTable';
 import TransactionForm from '../components/TransactionForm';
 import PageHeader from '../components/PageHeader';
-import EmptyState from '../components/EmptyState';
+
 import { MetricCardSkeleton } from '../components/LoadingSkeleton';
 import { showSuccess, showErrorWithRetry, showConfirm, showWarning } from '../utils/notifications';
 import { hoverLift, createStaggerDelay } from '../utils/animations';
@@ -45,7 +45,7 @@ export default function TransactionsPage() {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    
+
     return {
       startDate: startOfMonth.toISOString().split('T')[0],
       endDate: endOfMonth.toISOString().split('T')[0],
@@ -108,11 +108,11 @@ export default function TransactionsPage() {
         // Check if this is an installment transaction with group and scope is not 'single'
         const groupId = (selectedTransaction as any).installmentGroupId;
         if (groupId && scope && scope !== 'single' && dashboardId) {
-          await updateInstallmentGroup.mutateAsync({ 
-            groupId, 
-            data, 
-            dashboardId, 
-            scope 
+          await updateInstallmentGroup.mutateAsync({
+            groupId,
+            data,
+            dashboardId,
+            scope
           });
           const count = scope === 'all' ? selectedTransaction.installmentTotal : 'pendentes';
           showSuccess(`${count} parcelas atualizadas com sucesso.`, { title: 'Atualizado!' });
@@ -212,7 +212,7 @@ export default function TransactionsPage() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    const msg = selectedIds && selectedIds.length > 0 
+    const msg = selectedIds && selectedIds.length > 0
       ? `${selectedIds.length} transações exportadas com sucesso.`
       : 'Arquivo CSV baixado com sucesso.';
     showSuccess(msg, { title: 'Exportado!' });
@@ -254,49 +254,11 @@ export default function TransactionsPage() {
     },
   ];
 
-  const hasData = transactions.length > 0;
 
-  // Empty state
-  if (!isLoading && !hasData) {
-    return (
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <PageHeader
-          title="Transações"
-          breadcrumbs={[
-            { label: 'Dashboards', to: '/dashboards' },
-            { label: 'Transações' }
-          ]}
-          actionLabel={canEdit ? "Nova Transação" : undefined}
-          onAction={canEdit ? handleNewTransaction : undefined}
-        />
-        <EmptyState
-          icon={<ReceiptLong sx={{ fontSize: '80px' }} />}
-          title="Nenhuma transação cadastrada"
-          description={canEdit 
-            ? "Comece adicionando sua primeira transação para visualizar seus dados financeiros."
-            : "Nenhuma transação foi registrada neste dashboard ainda."
-          }
-          actions={canEdit ? [
-            {
-              label: 'Adicionar Transação',
-              onClick: handleNewTransaction,
-              variant: 'contained',
-            },
-          ] : []}
-        />
 
-        <TransactionForm
-          open={showTransactionForm}
-          transaction={selectedTransaction}
-          onClose={() => {
-            setShowTransactionForm(false);
-            setSelectedTransaction(null);
-          }}
-          onSave={handleSaveTransaction}
-        />
-      </Container>
-    );
-  }
+  // Note: We no longer return early for empty state
+  // The full UI (filters, metrics, table) is always shown
+  // The table component handles its own empty state message
 
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
@@ -392,9 +354,9 @@ export default function TransactionsPage() {
 
       {/* Filters */}
       <Box sx={{ mb: 4 }}>
-        <FiltersCard 
-          filters={filters} 
-          onFiltersChange={setFilters} 
+        <FiltersCard
+          filters={filters}
+          onFiltersChange={setFilters}
           transactions={transactions}
           categories={categories}
         />

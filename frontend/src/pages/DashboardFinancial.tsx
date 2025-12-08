@@ -23,7 +23,8 @@ import {
   useUpdateTransaction,
   useDeleteTransaction,
   useCreateManyTransactions,
-  useUpdateInstallmentGroup
+  useUpdateInstallmentGroup,
+  useDeleteManyTransactions,
 } from '../hooks/api/useTransactions';
 
 export default function DashboardFinancial() {
@@ -33,6 +34,7 @@ export default function DashboardFinancial() {
   const [filters, setFilters] = useState<TransactionFilters>({});
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
 
   // Custom Hooks
   const { data: transactions = [], refetch, isLoading } = useTransactions(filters, dashboardId);
@@ -43,6 +45,7 @@ export default function DashboardFinancial() {
   const deleteTransaction = useDeleteTransaction();
   const createManyTransactions = useCreateManyTransactions();
   const updateInstallmentGroup = useUpdateInstallmentGroup();
+  const deleteManyTransactions = useDeleteManyTransactions();
 
   const handleNewTransaction = () => {
     setSelectedTransaction(null);
@@ -79,20 +82,51 @@ export default function DashboardFinancial() {
     }
   };
 
+  const handleDeleteSelected = async () => {
+    if (selectedTransactionIds.size === 0) return;
+
+    const result = await showConfirm(
+      `Deseja excluir ${selectedTransactionIds.size} transações selecionadas? Esta ação também excluirá parcelas relacionadas e itens das transações.`,
+      {
+        title: 'Confirmar exclusão em lote?',
+        icon: 'warning',
+        confirmButtonText: 'Sim, excluir todas',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: theme.palette.error.main,
+        cancelButtonColor: theme.palette.grey[500],
+      }
+    );
+
+    if (result.isConfirmed && dashboardId) {
+      try {
+        const idsArray = Array.from(selectedTransactionIds);
+        await deleteManyTransactions.mutateAsync({
+          ids: idsArray,
+          dashboardId,
+          includeInstallments: true,
+        });
+        setSelectedTransactionIds(new Set());
+        showSuccess(`${selectedTransactionIds.size} transações excluídas com sucesso.`, { title: 'Excluído!' });
+      } catch (error) {
+        showErrorWithRetry(error, handleDeleteSelected);
+      }
+    }
+  };
+
   const handleSaveTransaction = async (data: Partial<Transaction>, scope?: 'single' | 'remaining' | 'all') => {
     try {
       // Ensure dashboardId is included
       const transactionData = { ...data, dashboardId };
-      
+
       if (selectedTransaction) {
         // Check if this is an installment transaction with group and scope is not 'single'
         const groupId = (selectedTransaction as any).installmentGroupId;
         if (groupId && scope && scope !== 'single' && dashboardId) {
-          await updateInstallmentGroup.mutateAsync({ 
-            groupId, 
-            data: transactionData, 
-            dashboardId, 
-            scope 
+          await updateInstallmentGroup.mutateAsync({
+            groupId,
+            data: transactionData,
+            dashboardId,
+            scope
           });
           const count = scope === 'all' ? selectedTransaction.installmentTotal : 'pendentes';
           showSuccess(`${count} parcelas atualizadas com sucesso.`, { title: 'Atualizado!' });
@@ -128,14 +162,18 @@ export default function DashboardFinancial() {
     }
   };
 
-  const handleExport = useCallback(() => {
-    if (!transactions.length) {
+  const handleExport = useCallback((selectedIds?: string[]) => {
+    const transactionsToExport = selectedIds && selectedIds.length > 0
+      ? transactions.filter(t => selectedIds.includes(t.id))
+      : transactions;
+
+    if (!transactionsToExport.length) {
       showWarning('Não há transações para exportar.', { title: 'Sem dados' });
       return;
     }
 
     const header = 'Data;Tipo;Fluxo;Categoria;Subcategoria;Descricao;Valor;MetodoPag;ParcelasTotal;ParcelaAtual;StatusParcela;Fonte;Observacao\n';
-    const rows = transactions.map(t => {
+    const rows = transactionsToExport.map(t => {
       const date = new Date(t.date).toLocaleDateString('pt-BR');
       return [
         date,
@@ -159,16 +197,18 @@ export default function DashboardFinancial() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `financas_${new Date().toISOString().split('T')[0]}.csv`;
+    const suffix = selectedIds && selectedIds.length > 0 ? `_${selectedIds.length}_selecionadas` : '';
+    link.download = `financas${suffix}_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    showSuccess('Arquivo CSV baixado com sucesso.', { title: 'Exportado!' });
+    const msg = selectedIds && selectedIds.length > 0
+      ? `${selectedIds.length} transações exportadas com sucesso.`
+      : 'Arquivo CSV baixado com sucesso.';
+    showSuccess(msg, { title: 'Exportado!' });
   }, [transactions]);
-
-  const hasData = transactions.length > 0;
 
   // Loading state
   if (isLoading) {
@@ -186,39 +226,8 @@ export default function DashboardFinancial() {
     );
   }
 
-  // Empty state - show only import section
-  if (!hasData) {
-    return (
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        <PageHeader
-          title="Visão Geral"
-          breadcrumbs={[
-            { label: 'Dashboards', to: '/dashboards' },
-            { label: 'Financeiro' }
-          ]}
-        />
-        
-        {/* Import e Entrada Rápida */}
-        <Box id="upload-section" sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '2fr 1fr' }, gap: 3 }}>
-          <UnifiedImport onImportCSV={handleImport} />
-          <QuickEntryForm onSave={handleSaveTransaction} onRefetch={refetch} />
-        </Box>
-
-        {/* Transaction Form */}
-        <TransactionForm
-          open={showTransactionForm}
-          transaction={selectedTransaction}
-          onClose={() => {
-            setShowTransactionForm(false);
-            setSelectedTransaction(null);
-          }}
-          onSave={handleSaveTransaction}
-        />
-      </Container>
-    );
-  }
-
-  // Normal state with data
+  // Always show full UI - no early return for empty state
+  // The individual components (charts, table) will handle their own empty states
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
       <PageHeader
@@ -255,6 +264,9 @@ export default function DashboardFinancial() {
         onNew={handleNewTransaction}
         onExport={handleExport}
         onThirdPartyUpdate={handleThirdPartyUpdate}
+        selectedIds={selectedTransactionIds}
+        onSelectionChange={setSelectedTransactionIds}
+        onDeleteSelected={handleDeleteSelected}
       />
 
       {/* Modais */}
@@ -270,3 +282,4 @@ export default function DashboardFinancial() {
     </Container>
   );
 }
+
