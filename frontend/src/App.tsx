@@ -30,6 +30,7 @@ const TransactionsPage = lazy(() => import('./pages/TransactionsPage'));
 const MembersPage = lazy(() => import('./pages/MembersPage'));
 const DashboardSettingsPage = lazy(() => import('./pages/DashboardSettingsPage'));
 const ItemAnalysisPage = lazy(() => import('./pages/ItemAnalysisPage'));
+const FinancialHealthPage = lazy(() => import('./pages/FinancialHealthPage'));
 
 const PageLoader = () => (
   <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -101,6 +102,7 @@ function App() {
                 <Route path="/dashboard/:dashboardId/settings" element={<DashboardSettingsPage />} />
                 <Route path="/dashboard/:dashboardId/transactions" element={<TransactionsPage />} />
                 <Route path="/dashboard/:dashboardId/items" element={<ItemAnalysisPage />} />
+                <Route path="/dashboard/:dashboardId/financial-health" element={<FinancialHealthPage />} />
 
                 {/* User profile and notifications */}
                 <Route path="/profile" element={<ProfilePage />} />

@@ -629,9 +629,12 @@ export class IngestionService {
                     amount: this.normalizeAmount(t.amount),
                 }));
 
-                // Normaliza valor total da fatura
+                // Normaliza valor total da fatura e limite de crédito
                 if (data.statementInfo?.totalAmount) {
                     data.statementInfo.totalAmount = this.normalizeAmount(data.statementInfo.totalAmount);
+                }
+                if (data.statementInfo?.creditLimit) {
+                    data.statementInfo.creditLimit = this.normalizeAmount(data.statementInfo.creditLimit);
                 }
 
                 return data as GeminiStatementResponse;
@@ -699,6 +702,7 @@ Se o documento for uma fatura de cartão de crédito (contém múltiplas compras
     "cardLastDigits": "Últimos 4 dígitos do cartão principal (ex: 8970)",
     "dueDate": "Data de vencimento em ISO 8601",
     "totalAmount": Valor total da fatura como número (JÁ com estornos descontados),
+    "creditLimit": Limite total do cartão como número (se disponível no documento),
     "holderName": "Nome do titular",
     "periodStart": "Data início do período em ISO 8601 (se disponível)",
     "periodEnd": "Data fim do período em ISO 8601 (se disponível)"
@@ -732,53 +736,130 @@ Se for um documento com apenas UMA transação, retorne:
 FORMATOS DE FATURAS BRASILEIRAS - MUITO IMPORTANTE:
 
 **NUBANK (logo roxo "nu"):**
-- Datas aparecem como "31 OUT", "05 NOV", "08 DEZ 2025" → converta para ISO 8601
-- Últimos 4 dígitos aparecem como "•••• 8970" ou com ícone de celular
-- Seção "TRANSAÇÕES" contém as compras normais
-- Seção "Pagamentos e Financiamentos" contém:
-  - "Pagamento em DD MMM" → IGNORAR (é pagamento da fatura anterior)
-  - Financiamentos/empréstimos com "Total a pagar" e detalhes de IOF/juros → INCLUIR como categoria "Financiamento"
-- "-R$" na frente do valor indica PAGAMENTO (ignorar) ou ESTORNO (incluir com isRefund: true)
-- Compras via NuPay aparecem com ícone "nu" roxo
 
-**INTER (logo laranja):**
-- Datas no formato DD/MM/YYYY ou DD MMM
-- Últimos 4 dígitos do cartão aparecem claramente
-- Parcelas no formato "Parcela X de Y"
+ESTRUTURA DO DOCUMENTO NUBANK:
+1. CABEÇALHO: Nome do titular, valor total, data de vencimento (ex: "15 DEZ 2025"), período vigente (ex: "06 NOV a 06 DEZ"), limite total
+2. RESUMO FINANCEIRO: Fatura anterior, pagamentos, saldo financiado, juros, IOF, total de compras, outros lançamentos
+3. LISTA DE TRANSAÇÕES: Compras, parcelas, assinaturas, recargas
+4. PAGAMENTOS E FINANCIAMENTOS: Pagamentos recebidos, rotativo, estornos
+
+FORMATO DAS TRANSAÇÕES:
+[DATA] [•••• XXXX] [Estabelecimento] [Parcela X/Y] [Valor]
+Exemplo: "06 NOV •••• 0246 Shopee *Vcbikeshop - Parcela 6/8 R$ 60,98"
+- Data: 06 NOV
+- Cartão: 0246
+- Estabelecimento: Shopee *Vcbikeshop
+- Parcela: 6 de 8
+- Valor: R$ 60,98
+
+O QUE EXTRAIR COMO TRANSAÇÕES:
+
+1. SEÇÃO "TRANSAÇÕES" - INCLUIR TUDO:
+   - Compras à vista (supermercados, farmácias, combustível, etc.)
+   - Compras parceladas (cada parcela é um lançamento individual com "Parcela X/Y")
+   - Assinaturas (Disney+, Netflix, Spotify, etc.)
+   - Recargas de celular
+
+2. SEÇÃO "RESUMO DA FATURA ATUAL" - INCLUIR COMO DESPESAS:
+   - "Saldo financiado" → INCLUIR com categoria "Financiamento" e descrição "Saldo Financiado (Rotativo)"
+   - "Juros de financiamento" → INCLUIR com categoria "Financiamento" e descrição "Juros Rotativo"
+   - "IOF de financiamento" → INCLUIR com categoria "Financiamento" e descrição "IOF Rotativo"
+   - "Outros lançamentos" → INCLUIR com categoria apropriada
+
+3. SEÇÃO "PAGAMENTOS E FINANCIAMENTOS":
+   - Estornos/créditos (valor com "+" ou descrição como "Crédito", "Estorno") → INCLUIR com isRefund: true
+   - "Crédito de rotativo" → Se for CRÉDITO (devolução), INCLUIR com isRefund: true
+
+O QUE NÃO EXTRAIR (IGNORAR):
+- "Fatura anterior" (é saldo, não transação nova)
+- "Pagamento recebido" ou "Pagamento em DD MMM" (são pagamentos feitos pelo cliente)
+- Linhas que começam com "-R$" seguidas de "Pagamento" (são pagamentos da fatura)
+
+REGRAS DE DATAS:
+- Datas aparecem como "DD MMM" (ex: "06 NOV", "15 DEZ")
+- Ano: use o ano da data de vencimento ou período da fatura
+- Converta para ISO 8601: "06 NOV" com ano 2025 → "2025-11-06T00:00:00.000Z"
+- Meses: JAN=01, FEV=02, MAR=03, ABR=04, MAI=05, JUN=06, JUL=07, AGO=08, SET=09, OUT=10, NOV=11, DEZ=12
+
+REGRAS DE PARCELAS:
+- Cada parcela aparece INDIVIDUALMENTE na fatura
+- Formato: "Parcela X/Y" onde X = parcela atual, Y = total
+- O valor exibido é APENAS da parcela do mês, não o valor total da compra
+- Extraia installmentInfo EXATAMENTE como aparece: "Parcela 6/8", "10/10", etc.
+
+REGRAS DE ESTORNO/CRÉDITO:
+- Estornos aparecem com "+" antes do valor ou têm texto "Crédito", "Estorno"
+- Marque isRefund: true e use valor POSITIVO
+- "Crédito de rotativo" é um CRÉDITO (devolução de juros) → incluir com isRefund: true
+
+**BANCO INTER (logo laranja):**
+
+ESTRUTURA DO DOCUMENTO INTER:
+1. RESUMO: Total a pagar, limite, pagamento mínimo, vencimento, encargos se pagar mínimo
+2. OPÇÕES DE PARCELAMENTO: 2 a 14 parcelas com taxas
+3. DESCRITIVO DO MÊS: Total despesas, antecipado, juros, fatura final
+4. TRANSAÇÕES POR CARTÃO: Organizadas por número do cartão (ex: 5555****2440, 5555****2090)
+5. LIMITES: Crédito utilizado, disponível, limites por produto
+6. PRÓXIMA FATURA: Parcelas futuras, saldo em aberto
+7. ENCARGOS: Tabela de taxas (rotativo, parcelamento, multa)
+8. BOLETO: Código de barras e dados para pagamento
+
+FORMATO DAS TRANSAÇÕES:
+[Data] [Beneficiário] [Parcela X de Y] - R$ [Valor]
+Exemplo: "30 de ago. 2025 MERCADOLIVRE*PLLCELUL (Parcela 03 de 12) - R$ 119,51"
+- Data: 30 de ago. 2025
+- Estabelecimento: MERCADOLIVRE*PLLCELUL  
+- Parcela: 03 de 12
+- Valor: R$ 119,51
+
+PARTICULARIDADES DO INTER:
+1. Datas por extenso: "01 de nov. 2025", "30 de ago. 2025"
+   - nov. = novembro (11), ago. = agosto (08), dez. = dezembro (12), etc.
+2. MÚLTIPLOS CARTÕES: Transações organizadas por número do cartão
+   - Ex: 5555****2440 (um cartão), 5555****2090 (outro cartão)
+   - Capture o cardLastDigits de CADA transação
+3. CRÉDITOS/ANTECIPAÇÕES: Aparecem com "+ R$" antes do valor
+   - Ex: "AMAZON BR - + R$ 135,99" → isRefund: true
+4. PIX CRÉDITO PARCELADO: Inclui principal + juros
+   - Trate como transação normal parcelada, categoria "Financiamento"
+
+O QUE EXTRAIR COMO TRANSAÇÕES:
+
+1. SEÇÃO DE TRANSAÇÕES POR CARTÃO - INCLUIR TUDO:
+   - Compras à vista
+   - Compras parceladas (com "Parcela X de Y")
+   - Pagamentos online
+   - PIX Crédito Parcelado
+
+2. SEÇÃO DESCRITIVO DO MÊS - INCLUIR:
+   - "Juros/encargos" → categoria "Financiamento"
+   - Valores específicos de IOF se listados
+
+3. CRÉDITOS E ANTECIPAÇÕES:
+   - Valores com "+ R$" → isRefund: true (reduzem a fatura)
+
+O QUE NÃO EXTRAIR (IGNORAR):
+- Informações de resumo (total a pagar, limite, etc.)
+- Opções de parcelamento da fatura
+- Encargos futuros/projetados
+- Boleto de pagamento
+- Próxima fatura (são parcelas futuras, não cobradas ainda)
+
+REGRAS DE DATAS INTER:
+- Formato: "DD de MMM. AAAA" (ex: "01 de nov. 2025")
+- Converta para ISO 8601: "01 de nov. 2025" → "2025-11-01T00:00:00.000Z"
+- Meses abreviados: jan., fev., mar., abr., mai., jun., jul., ago., set., out., nov., dez.
 
 **OUTROS BANCOS (Itaú, Bradesco, Santander, C6, etc.):**
 - Formatos similares, adapte conforme o documento
 
-REGRAS DE DATAS ABREVIADAS:
-- "31 OUT" ou "31 OUT 2025" → 2025-10-31T00:00:00.000Z
-- "05 NOV" → Use o ano da fatura (geralmente no cabeçalho)
-- "08 DEZ 2025" → 2025-12-08T00:00:00.000Z
-- Meses: JAN=01, FEV=02, MAR=03, ABR=04, MAI=05, JUN=06, JUL=07, AGO=08, SET=09, OUT=10, NOV=11, DEZ=12
-
-REGRAS DE PARCELAMENTO - MUITO IMPORTANTE:
-- Identifique TODAS as compras parceladas na fatura
-- O parcelamento pode aparecer em vários formatos: "Parcela 6/10", "(Parcela 03 de 12)", "1/2", "2 de 3", etc.
-- Extraia o installmentInfo EXATAMENTE como aparece no documento
-- Mesmo se a parcela for 1/1, inclua se estiver indicado
-
-REGRAS DE ESTORNO/REEMBOLSO:
-- Estornos aparecem com "+" antes do valor (ex: "+ R$ 135,99") ou com "-R$" em alguns bancos
-- Para estornos: marque "isRefund": true e use o valor POSITIVO
-- NÃO subtraia o valor do estorno de nenhum total (o banco já fez isso)
-- Estornos serão salvos como Receita (crédito na fatura)
-
-REGRAS DE PAGAMENTO DE FATURA:
-- Ignore linhas de "Pagamento de fatura", "Pagamento efetuado", "Pagamento em DD MMM" - são movimentações internas
-- Essas linhas geralmente têm "-R$" e são pagamentos da fatura anterior
-
 REGRAS GERAIS:
 1. Converta R$ para números: "R$ 1.200,50" → 1200.50
-2. Datas DD/MM/YYYY ou "DD de MMM. YYYY" ou "DD MMM YYYY" → ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ)
-3. Se não tiver hora, use T00:00:00.000Z
-4. EXTRAIA TODAS as transações da fatura, não apenas algumas - PERCORRA TODO O DOCUMENTO
-5. Para categoria: use uma das disponíveis ou sugira uma apropriada em português
-6. Retorne APENAS o JSON, sem texto adicional
-7. Cada cartão pode ter dígitos diferentes (ex: •••• 8970 vs •••• 8622) - capture isso em cardLastDigits
+2. Datas → ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ)
+3. EXTRAIA TODAS as transações - PERCORRA TODO O DOCUMENTO
+4. Para categoria: use português brasileiro
+5. Retorne APENAS o JSON, sem texto adicional
+6. Cada cartão pode ter dígitos diferentes - capture em cardLastDigits
 
 Extraia os dados agora:`;
     }

@@ -34,6 +34,7 @@ export interface StatementInfo {
     cardLastDigits?: string | null;
     dueDate?: string | null;
     totalAmount?: number | null;
+    creditLimit?: number | null; // Limite total do cartão
     periodStart?: string | null;
     periodEnd?: string | null;
     holderName?: string | null;

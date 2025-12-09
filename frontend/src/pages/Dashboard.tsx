@@ -170,7 +170,12 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
 
   const handleThirdPartyUpdate = async (id: string, data: { isThirdParty: boolean; thirdPartyName?: string; thirdPartyDescription?: string }) => {
     try {
-      await transactionService.update(id, data);
+      // Get dashboardId from the transaction
+      const transaction = transactions.find((t: Transaction) => t.id === id);
+      if (!transaction) {
+        throw new Error('Transação não encontrada');
+      }
+      await transactionService.update(id, { ...data, dashboardId: transaction.dashboardId });
       refetch();
       showSuccess(data.isThirdParty ? 'Terceiro adicionado.' : 'Terceiro removido.', { title: 'Atualizado!' });
     } catch (error) {

@@ -61,9 +61,10 @@ import { hoverLift } from '../utils/animations';
 /**
  * Verifica se duas transações são potencialmente duplicadas
  * Critérios: mesmo mês/ano + valor igual + descrição similar (>50% match)
+ * Para parcelas: também verifica se é a mesma parcela da mesma compra
  */
 function isPotentialDuplicate(
-  newTx: { date: string | null; amount: number; description: string },
+  newTx: { date: string | null; amount: number; description: string; installmentNumber?: number; installmentTotal?: number },
   existingTx: Transaction
 ): boolean {
   // Comparar datas (mesmo mês/ano - não exige mesmo dia para parcelas)
@@ -89,7 +90,21 @@ function isPotentialDuplicate(
   const existDesc = cleanDescription(existingTx.description);
 
   // Match exato
-  if (newDesc === existDesc) return true;
+  if (newDesc === existDesc) {
+    // Se ambas são parcelas, verificar se é a mesma parcela
+    if (newTx.installmentTotal && newTx.installmentTotal > 1 &&
+      existingTx.installmentTotal && existingTx.installmentTotal > 1) {
+      // É a mesma parcela se tem o mesmo número de parcela e total
+      if (newTx.installmentNumber === existingTx.installmentNumber &&
+        newTx.installmentTotal === existingTx.installmentTotal) {
+        return true; // Duplicata exata da mesma parcela
+      }
+      // Se é parcela diferente da mesma compra, não é duplicata
+      // (ex: parcela 6/10 vs parcela 7/10 da mesma compra)
+      return false;
+    }
+    return true;
+  }
 
   // Match parcial (pelo menos 50% das palavras em comum)
   const newWords = new Set(newDesc.split(/\s+/).filter(w => w.length > 2));
@@ -100,14 +115,29 @@ function isPotentialDuplicate(
   const commonWords = [...newWords].filter(w => existWords.has(w));
   const similarity = commonWords.length / Math.min(newWords.size, existWords.size);
 
-  return similarity >= 0.5;
+  if (similarity >= 0.5) {
+    // Similar description - check installments
+    if (newTx.installmentTotal && newTx.installmentTotal > 1 &&
+      existingTx.installmentTotal && existingTx.installmentTotal > 1) {
+      // Same installment number and total = duplicate
+      if (newTx.installmentNumber === existingTx.installmentNumber &&
+        newTx.installmentTotal === existingTx.installmentTotal) {
+        return true;
+      }
+      // Different installment of same purchase = not duplicate
+      return false;
+    }
+    return true;
+  }
+
+  return false;
 }
 
 /**
  * Encontra possíveis duplicatas em uma lista de transações existentes
  */
 function findDuplicates(
-  newTransactions: Array<{ date: string | null; amount: number; description: string }>,
+  newTransactions: Array<{ date: string | null; amount: number; description: string; installmentNumber?: number; installmentTotal?: number }>,
   existingTransactions: Transaction[]
 ): Map<number, Transaction> {
   const duplicates = new Map<number, Transaction>();
@@ -196,6 +226,7 @@ interface StatementInfo {
   periodStart?: string | null;
   periodEnd?: string | null;
   holderName?: string | null;
+  creditLimit?: number | null; // Limite total do cartão
 }
 
 interface ExtractionResult {
@@ -357,7 +388,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     cardLastDigits: string,
     holderName: string | null | undefined,
     institution: string | null | undefined,
-    dueDay: number | null | undefined
+    dueDay: number | null | undefined,
+    creditLimit?: number | null
   ): Promise<Account | undefined> => {
     try {
       // Formato do nome: "FELIPE DE SOUZA FRANCA - Inter *2440" ou similar
@@ -378,6 +410,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
           isPrimary: false,
           cardLastDigits,
           dueDay: dueDay || undefined,
+          creditLimit: creditLimit || 5000, // Limite padrão, pode ser ajustado depois
         },
         dashboardId: dashboardId || '',
       });
@@ -787,7 +820,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
             cardDigits,
             result.statementInfo?.holderName,
             institutionName,
-            dueDay
+            dueDay,
+            result.statementInfo?.creditLimit
           );
 
           if (newAccount) {
@@ -1000,8 +1034,9 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
           calculatedFirstInstallmentDate = new Date(dueYear, dueMonth, linkedAccountDueDay);
         }
 
-        // Criar TODAS as parcelas (de 1 até total)
-        for (let i = 1; i <= installment.total; i++) {
+        // Criar apenas parcela ATUAL e FUTURAS (não recria parcelas passadas)
+        // A fatura mostra "Parcela 6/10" = só criar parcelas 6, 7, 8, 9, 10
+        for (let i = installment.current; i <= installment.total; i++) {
           let installmentDate: Date;
 
           if (calculatedFirstInstallmentDate) {
@@ -1015,13 +1050,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
             installmentDate = addMonths(statementDueDate, monthsFromCurrent);
           }
 
-          // Determinar status: passadas = Paga, atual = Paga, futuras = Pendente
-          let status: 'Paga' | 'Pendente' = 'Pendente';
-          if (i < installment.current) {
-            status = 'Paga'; // Parcelas passadas já foram pagas
-          } else if (i === installment.current) {
-            status = 'Paga'; // Parcela atual está nesta fatura
-          }
+          // Determinar status: atual = Paga (está na fatura), futuras = Pendente
+          const status: 'Paga' | 'Pendente' = i === installment.current ? 'Paga' : 'Pendente';
 
           allTransactionsToSave.push({
             description: `${description} (${i}/${installment.total})`,

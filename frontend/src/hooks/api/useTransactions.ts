@@ -39,8 +39,8 @@ export const useUpdateTransaction = () => {
     const queryClient = useQueryClient();
 
     return useMutation({
-        mutationFn: ({ id, data }: { id: string; data: Partial<Transaction> }) =>
-            transactionService.update(id, data),
+        mutationFn: ({ id, data, dashboardId }: { id: string; data: Partial<Transaction>; dashboardId?: string }) =>
+            transactionService.update(id, { ...data, dashboardId }),
         onSuccess: (updatedTransaction) => {
             queryClient.setQueriesData({ queryKey: ['transactions'] }, (oldData: Transaction[] | undefined) => {
                 if (!oldData) return oldData;

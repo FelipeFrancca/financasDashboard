@@ -29,6 +29,7 @@ export interface Transaction {
   thirdPartyName?: string;
   thirdPartyDescription?: string;
   items?: TransactionItem[];
+  accountId?: string; // ID da conta/cartão vinculado
   createdAt?: string;
   updatedAt?: string;
 }

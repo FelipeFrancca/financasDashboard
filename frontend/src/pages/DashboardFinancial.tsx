@@ -144,7 +144,7 @@ export default function DashboardFinancial() {
           const count = scope === 'all' ? selectedTransaction.installmentTotal : 'pendentes';
           showSuccess(`${count} parcelas atualizadas com sucesso.`, { title: 'Atualizado!' });
         } else {
-          await updateTransaction.mutateAsync({ id: selectedTransaction.id, data: transactionData });
+          await updateTransaction.mutateAsync({ id: selectedTransaction.id, data: transactionData, dashboardId });
           showSuccess('Transação atualizada com sucesso.', { title: 'Atualizado!' });
         }
       } else {
@@ -159,7 +159,7 @@ export default function DashboardFinancial() {
 
   const handleThirdPartyUpdate = async (id: string, data: { isThirdParty: boolean; thirdPartyName?: string; thirdPartyDescription?: string }) => {
     try {
-      await updateTransaction.mutateAsync({ id, data });
+      await updateTransaction.mutateAsync({ id, data, dashboardId });
       showSuccess(data.isThirdParty ? 'Terceiro adicionado.' : 'Terceiro removido.', { title: 'Atualizado!' });
     } catch (error) {
       showErrorWithRetry(error, () => handleThirdPartyUpdate(id, data));

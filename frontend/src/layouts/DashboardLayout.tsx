@@ -47,6 +47,7 @@ import {
     People,
     TrendingUp,
     Person,
+    HealthAndSafety,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -119,6 +120,7 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                     { text: 'Contas', icon: <AccountBalanceWallet />, path: `${basePath}/accounts` },
                     { text: 'Categorias', icon: <Category />, path: `${basePath}/categories` },
                     { text: 'Transferências', icon: <CompareArrows />, path: `${basePath}/transfers` },
+                    { text: 'Saúde Financeira', icon: <HealthAndSafety />, path: `${basePath}/financial-health` },
                 ],
             },
             {
