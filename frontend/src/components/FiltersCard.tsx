@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Card,
   CardHeader,
@@ -49,78 +49,115 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
   const theme = useTheme();
   const [expandedAccordion, setExpandedAccordion] = useState<boolean>(false);
 
-  // Estado para mês e ano selecionados
-  const now = new Date();
-  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth());
-  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
+  // Derivar mês e ano dos filtros recebidos (ou usar mês atual como fallback)
+  const { derivedMonth, derivedYear } = useMemo(() => {
+    if (filters.startDate) {
+      const date = new Date(filters.startDate + 'T00:00:00');
+      return { derivedMonth: date.getMonth(), derivedYear: date.getFullYear() };
+    }
+    const now = new Date();
+    return { derivedMonth: now.getMonth(), derivedYear: now.getFullYear() };
+  }, [filters.startDate]);
 
-  const handleChange = (field: keyof TransactionFilters, value: string) => {
+  // Estado local para mês e ano (sincronizado com filtros)
+  const [selectedMonth, setSelectedMonth] = useState<number>(derivedMonth);
+  const [selectedYear, setSelectedYear] = useState<number>(derivedYear);
+
+  // Sincronizar quando os filtros mudarem externamente
+  useEffect(() => {
+    setSelectedMonth(derivedMonth);
+    setSelectedYear(derivedYear);
+  }, [derivedMonth, derivedYear]);
+
+  const handleChange = useCallback((field: keyof TransactionFilters, value: string) => {
     onFiltersChange({ ...filters, [field]: value });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleReset = () => {
-    onFiltersChange({});
+  const handleReset = useCallback(() => {
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    onFiltersChange({
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+    });
     setExpandedAccordion(false);
-    // Reset para mês atual
-    setSelectedMonth(now.getMonth());
-    setSelectedYear(now.getFullYear());
-  };
+  }, [onFiltersChange]);
 
   // Handler para mudança do campo de filtro de data
-  const handleDateFilterFieldChange = (newValue: 'date' | 'dueDate') => {
+  const handleDateFilterFieldChange = useCallback((newValue: 'date' | 'dueDate') => {
     onFiltersChange({
       ...filters,
       dateFilterField: newValue,
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  // Função para aplicar filtro de mês
-  const applyMonthFilter = (month: number, year: number) => {
-    const startDate = new Date(year, month, 1);
-    const endDate = new Date(year, month + 1, 0); // Último dia do mês
+  // Handler para mudança de mês (direto pelo seletor ou toggle buttons)
+  const handleMonthChange = useCallback((newMonth: number) => {
+    const startDate = new Date(selectedYear, newMonth, 1);
+    const endDate = new Date(selectedYear, newMonth + 1, 0);
 
+    setSelectedMonth(newMonth);
     onFiltersChange({
       ...filters,
       startDate: startDate.toISOString().split('T')[0],
       endDate: endDate.toISOString().split('T')[0],
     });
-  };
-
-  // Handler para mudança de mês
-  const handleMonthChange = (newMonth: number) => {
-    setSelectedMonth(newMonth);
-    applyMonthFilter(newMonth, selectedYear);
-  };
+  }, [selectedYear, filters, onFiltersChange]);
 
   // Handler para navegar entre meses
-  const handlePreviousMonth = () => {
+  const handlePreviousMonth = useCallback(() => {
     let newMonth = selectedMonth - 1;
     let newYear = selectedYear;
     if (newMonth < 0) {
       newMonth = 11;
       newYear--;
     }
+
+    const startDate = new Date(newYear, newMonth, 1);
+    const endDate = new Date(newYear, newMonth + 1, 0);
+
     setSelectedMonth(newMonth);
     setSelectedYear(newYear);
-    applyMonthFilter(newMonth, newYear);
-  };
+    onFiltersChange({
+      ...filters,
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+    });
+  }, [selectedMonth, selectedYear, filters, onFiltersChange]);
 
-  const handleNextMonth = () => {
+  const handleNextMonth = useCallback(() => {
     let newMonth = selectedMonth + 1;
     let newYear = selectedYear;
     if (newMonth > 11) {
       newMonth = 0;
       newYear++;
     }
+
+    const startDate = new Date(newYear, newMonth, 1);
+    const endDate = new Date(newYear, newMonth + 1, 0);
+
     setSelectedMonth(newMonth);
     setSelectedYear(newYear);
-    applyMonthFilter(newMonth, newYear);
-  };
+    onFiltersChange({
+      ...filters,
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+    });
+  }, [selectedMonth, selectedYear, filters, onFiltersChange]);
 
-  const handleYearChange = (newYear: number) => {
+  const handleYearChange = useCallback((newYear: number) => {
+    const startDate = new Date(newYear, selectedMonth, 1);
+    const endDate = new Date(newYear, selectedMonth + 1, 0);
+
     setSelectedYear(newYear);
-    applyMonthFilter(selectedMonth, newYear);
-  };
+    onFiltersChange({
+      ...filters,
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+    });
+  }, [selectedMonth, filters, onFiltersChange]);
 
   const applyBillingCycle = () => {
     if (!filters.accountId) return;
@@ -128,6 +165,7 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
     const account = accounts.find(a => a.id === filters.accountId);
     if (!account || account.type !== 'CREDIT_CARD' || !account.closingDay || !account.dueDay) return;
 
+    const now = new Date();
     const currentDay = now.getDate();
 
     let targetMonth = now.getMonth();
@@ -175,7 +213,8 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
   );
 
   // Anos disponíveis para seleção (5 anos para trás e 1 para frente)
-  const availableYears = Array.from({ length: 7 }, (_, i) => now.getFullYear() - 5 + i);
+  const currentYear = new Date().getFullYear();
+  const availableYears = Array.from({ length: 7 }, (_, i) => currentYear - 5 + i);
 
   return (
     <Card id="filters-section" sx={{ ...fadeIn, scrollMarginTop: '100px' }}>

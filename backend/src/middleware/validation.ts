@@ -142,6 +142,11 @@ export const idParamSchema = z.object({
     id: z.string().min(1, 'ID não pode estar vazio'),
 });
 
+export const idUserIdParamSchema = z.object({
+    id: z.string().min(1, 'ID não pode estar vazio'),
+    userId: z.string().min(1, 'ID do usuário não pode estar vazio'),
+});
+
 /**
  * Helper para paginação padrão
  */

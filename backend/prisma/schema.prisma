@@ -162,6 +162,11 @@ model Dashboard {
   @@map("dashboards")
 }
 
+enum MemberStatus {
+  PENDING
+  APPROVED
+}
+
 model DashboardMember {
   id          String        @id @default(cuid())
   dashboardId String
@@ -169,10 +174,12 @@ model DashboardMember {
   userId      String
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   role        DashboardRole @default(VIEWER)
+  status      MemberStatus  @default(APPROVED)
 
   createdAt DateTime @default(now())
 
   @@unique([dashboardId, userId])
+  @@index([status])
   @@map("dashboard_members")
 }
 

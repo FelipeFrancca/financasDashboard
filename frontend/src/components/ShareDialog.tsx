@@ -54,7 +54,9 @@ export default function ShareDialog({ open, onClose, dashboardId, dashboardTitle
         expiresAt,
         isOneTime: data.isOneTime === 'one-time'
       });
-      setShareLink(result.shareLink);
+      // API returns { code, ... }, we need to build the full share link
+      const link = `${window.location.origin}/shared/${result.code}`;
+      setShareLink(link);
     } catch (error: any) {
       showErrorWithRetry(error, () => handleGenerate(data));
     } finally {

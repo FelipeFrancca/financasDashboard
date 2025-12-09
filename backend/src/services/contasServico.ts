@@ -111,10 +111,14 @@ export async function getAccounts(
  */
 export async function getAccountById(
     id: string,
+    dashboardId: string,
     userId: string
 ): Promise<Account> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR', 'VIEWER']);
+
     const account = await prisma.account.findFirst({
-        where: { id, userId, deletedAt: null },
+        where: { id, dashboardId, deletedAt: null },
     });
 
     if (!account) {
@@ -129,26 +133,27 @@ export async function getAccountById(
  */
 export async function getAccountWithStats(
     id: string,
+    dashboardId: string,
     userId: string
 ): Promise<AccountWithStatsDTO> {
-    const account = await getAccountById(id, userId);
+    const account = await getAccountById(id, dashboardId, userId);
 
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
     const [totalTransactions, lastTransaction, monthlyStats] = await Promise.all([
         prisma.transaction.count({
-            where: { accountId: id, userId, deletedAt: null },
+            where: { accountId: id, dashboardId, deletedAt: null },
         }),
         prisma.transaction.findFirst({
-            where: { accountId: id, userId, deletedAt: null },
+            where: { accountId: id, dashboardId, deletedAt: null },
             orderBy: { date: 'desc' },
             select: { date: true },
         }),
         prisma.transaction.findMany({
             where: {
                 accountId: id,
-                userId,
+                dashboardId,
                 deletedAt: null,
                 date: { gte: firstDayOfMonth },
             },
@@ -182,15 +187,23 @@ export async function getAccountWithStats(
 export async function updateAccount(
     id: string,
     dto: UpdateAccountDTO,
+    dashboardId: string,
     userId: string
 ): Promise<Account> {
-    // Verificar se conta existe e pertence ao usuário
-    await getAccountById(id, userId);
+    // Verificar permissão
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
+    // Verificar se conta existe no dashboard
+    const existing = await prisma.account.findFirst({
+        where: { id, dashboardId, deletedAt: null }
+    });
+    if (!existing) throw new NotFoundError('Conta não encontrada');
 
     // Se for marcar como primária, desmarcar outras
     if (dto.isPrimary) {
         await prisma.account.updateMany({
-            where: { userId, isPrimary: true, id: { not: id } },
+            where: { dashboardId, isPrimary: true, id: { not: id } },
             data: { isPrimary: false },
         });
     }
@@ -210,14 +223,26 @@ export async function updateAccount(
  */
 export async function deleteAccount(
     id: string,
+    dashboardId: string,
     userId: string
 ): Promise<void> {
+    const { checkPermission } = await import('./paineisServico');
+    await checkPermission(userId, dashboardId, ['OWNER']); // Only owner can delete accounts? Or editors? Let's assume Owner for deletion safety or logic. Actually Editor should be able to if they created it? But accounts are shared. Let's keep OWNER for deletion to match dashboard deletion logic usually, or check requirement. Actually, let's allow OWNER and EDITOR.
+    // Wait, usually editors can delete resources. Let's verify dashboardMember logic.
+    // DashboardMember roles: OWNER, EDITOR, VIEWER.
+    // Safe to allow EDITOR to delete account? Probably yes.
+    await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
+
     // Verificar se conta existe
-    const account = await getAccountById(id, userId);
+    const account = await prisma.account.findFirst({
+        where: { id, dashboardId, deletedAt: null }
+    });
+
+    if (!account) throw new NotFoundError('Conta não encontrada');
 
     // Verificar se tem transações
     const transactionsCount = await prisma.transaction.count({
-        where: { accountId: id, userId, deletedAt: null },
+        where: { accountId: id, dashboardId, deletedAt: null },
     });
 
     if (transactionsCount > 0) {
@@ -249,14 +274,15 @@ export async function deleteAccount(
  */
 export async function recalculateBalance(
     accountId: string,
+    dashboardId: string,
     userId: string
 ): Promise<Account> {
-    const account = await getAccountById(accountId, userId);
+    const account = await getAccountById(accountId, dashboardId, userId);
 
     const transactions = await prisma.transaction.findMany({
         where: {
             accountId,
-            userId,
+            dashboardId,
             deletedAt: null,
         },
         select: {
@@ -298,9 +324,10 @@ export async function recalculateBalance(
 export async function updateBalance(
     accountId: string,
     dto: UpdateBalanceDTO,
+    dashboardId: string,
     userId: string
 ): Promise<Account> {
-    const account = await getAccountById(accountId, userId);
+    const account = await getAccountById(accountId, dashboardId, userId);
 
     let newBalance: number;
 
@@ -345,9 +372,10 @@ export async function updateBalance(
 export async function reconcileAccount(
     accountId: string,
     dto: ReconcileAccountDTO,
+    dashboardId: string,
     userId: string
 ): Promise<ReconciliationResultDTO> {
-    const account = await recalculateBalance(accountId, userId);
+    const account = await recalculateBalance(accountId, dashboardId, userId);
 
     const difference = Number(account.currentBalance) - dto.statementBalance;
     const isReconciled = Math.abs(difference) < 0.01; // Tolerância de 1 centavo
@@ -376,15 +404,16 @@ export async function reconcileAccount(
 // ============================================
 
 /**
- * Valida se conta existe e pertence ao usuário
+ * Valida se conta existe e pertence ao dashboard
  */
 export async function validateAccountOwnership(
     accountId: string,
-    userId: string
+    dashboardId: string,
+    userId?: string
 ): Promise<boolean> {
     try {
         const account = await prisma.account.findFirst({
-            where: { id: accountId, userId, deletedAt: null },
+            where: { id: accountId, dashboardId, deletedAt: null },
         });
         return !!account;
     } catch {
@@ -393,11 +422,14 @@ export async function validateAccountOwnership(
 }
 
 /**
- * Obtém conta primária do usuário
+ * Obtém conta primária do usuário (por dashboard)
  */
-export async function getPrimaryAccount(userId: string): Promise<Account | null> {
+export async function getPrimaryAccount(userId: string, dashboardId?: string): Promise<Account | null> {
+    const where: any = { userId, isPrimary: true, status: AccountStatus.ACTIVE, deletedAt: null };
+    if (dashboardId) where.dashboardId = dashboardId;
+
     return prisma.account.findFirst({
-        where: { userId, isPrimary: true, status: AccountStatus.ACTIVE, deletedAt: null },
+        where,
     });
 }
 

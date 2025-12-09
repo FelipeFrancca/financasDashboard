@@ -74,10 +74,20 @@ export class IngestionService {
 
         try {
             // Estratégia 1: PDF com extração de texto (Custo Zero)
+            // EXCETO para faturas de cartão de crédito, que precisam de IA
             if (mimeType === 'application/pdf') {
                 const regexResult = await this.extractFromPDF(fileBuffer);
 
-                if (regexResult.confidence >= IngestionService.CONFIDENCE_THRESHOLD) {
+                // Detectar se é uma fatura de cartão de crédito
+                const isCreditCardStatement = await this.isCreditCardStatement(fileBuffer);
+
+                if (isCreditCardStatement) {
+                    logger.info(
+                        'Documento detectado como fatura de cartão de crédito - usando IA para múltiplas transações',
+                        'IngestionService'
+                    );
+                    // Faturas de cartão sempre usam IA para extrair múltiplas transações
+                } else if (regexResult.confidence >= IngestionService.CONFIDENCE_THRESHOLD) {
                     logger.info(
                         'Extração via Regex bem-sucedida (custo zero)',
                         'IngestionService',
@@ -95,9 +105,9 @@ export class IngestionService {
                 }
 
                 logger.info(
-                    'Confiança do Regex baixa, enviando para IA',
+                    'Enviando para IA (fatura de cartão ou baixa confiança)',
                     'IngestionService',
-                    { confidence: regexResult.confidence }
+                    { confidence: regexResult.confidence, isCreditCardStatement }
                 );
             }
 
@@ -264,6 +274,102 @@ export class IngestionService {
                 confidence: 0,
                 matchedPatterns: [],
             };
+        }
+    }
+
+    /**
+     * Detecta se o PDF é uma fatura de cartão de crédito
+     * Usado para decidir se deve usar IA em vez de Regex
+     */
+    private async isCreditCardStatement(buffer: Buffer): Promise<boolean> {
+        try {
+            const pdfParseModule = await import('pdf-parse') as any;
+            const pdfParse = pdfParseModule.default || pdfParseModule;
+            const data = await pdfParse(buffer);
+            const text = data.text.toLowerCase();
+
+            // Palavras-chave que indicam fatura de cartão de crédito
+            const creditCardKeywords = [
+                'fatura',
+                'cartão de crédito',
+                'cartao de credito',
+                'limite total',
+                'limite disponível',
+                'limite disponivel',
+                'vencimento',
+                'data de vencimento',
+                'pagamento mínimo',
+                'pagamento minimo',
+                'transações',
+                'transacoes',
+                // Bancos/emissores brasileiros
+                'nubank',
+                'inter',
+                'itaú',
+                'itau',
+                'bradesco',
+                'santander',
+                'c6 bank',
+                'banco pan',
+                'neon',
+                'next',
+                'original',
+                'digio',
+                'picpay',
+                'will bank',
+                'credicard',
+                'sicredi',
+            ];
+
+            // Padrões que indicam lista de transações
+            const transactionPatterns = [
+                /\d{2}\s*(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)/gi, // Datas abreviadas
+                /\d{2}\/\d{2}.*r\$\s*\d+[,\.]\d{2}/gi, // DD/MM ... R$ XX,XX
+                /parcela\s*\d+\s*(de|\/)\s*\d+/gi, // Parcela X de Y
+            ];
+
+            // Verificar palavras-chave
+            let keywordMatches = 0;
+            for (const keyword of creditCardKeywords) {
+                if (text.includes(keyword)) {
+                    keywordMatches++;
+                }
+            }
+
+            // Verificar padrões de transações
+            let transactionPatternMatches = 0;
+            for (const pattern of transactionPatterns) {
+                const matches = text.match(pattern);
+                if (matches && matches.length > 0) {
+                    transactionPatternMatches += matches.length;
+                }
+            }
+
+            // Conta quantos valores R$ existem no documento
+            const currencyMatches = text.match(/r\$\s*\d+(?:\.\d{3})*(?:,\d{2})?/gi);
+            const currencyCount = currencyMatches?.length || 0;
+
+            // Critérios para detectar fatura de cartão:
+            // - Pelo menos 2 palavras-chave de cartão de crédito
+            // - OU: padrões de transação + múltiplos valores monetários
+            const isCreditCard = (
+                (keywordMatches >= 2) ||
+                (transactionPatternMatches >= 3 && currencyCount >= 5) ||
+                (keywordMatches >= 1 && currencyCount >= 10)
+            );
+
+            if (isCreditCard) {
+                logger.debug(
+                    'Documento identificado como fatura de cartão',
+                    'IngestionService',
+                    { keywordMatches, transactionPatternMatches, currencyCount }
+                );
+            }
+
+            return isCreditCard;
+        } catch (error) {
+            logger.warn('Erro ao detectar tipo de documento', 'IngestionService', { error });
+            return false;
         }
     }
 
@@ -573,10 +679,13 @@ ${categoriesStr}
 
 REGRAS DE CATEGORIA:
 - SEMPRE sugira categorias em PORTUGUÊS BRASILEIRO
-- Se não houver categorias disponíveis, use uma destas: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Compras, Assinaturas, Serviços, Outros
+- Se não houver categorias disponíveis, use uma destas: Alimentação, Transporte, Moradia, Lazer, Saúde, Educação, Compras, Assinaturas, Serviços, Financiamento, Outros
 - NUNCA use categorias em inglês (ex: Shopping, Food, Transport, Entertainment, etc.)
-- Para compras online (Amazon, Mercado Livre, etc.), use "Compras"
+- Para compras online (Amazon, Mercado Livre, Shopee, etc.), use "Compras"
 - Para streaming/apps (Netflix, Spotify, etc.), use "Assinaturas"
+- Para Uber, 99, táxi, etc., use "Transporte"
+- Para farmácias (Redepharma, Drogasil, etc.), use "Saúde"
+- Para financiamentos e empréstimos, use "Financiamento"
 
 ANALISE O DOCUMENTO E DETERMINE O TIPO:
 
@@ -586,11 +695,13 @@ Se o documento for uma fatura de cartão de crédito (contém múltiplas compras
 {
   "isMultiTransaction": true,
   "statementInfo": {
-    "institution": "Nome do banco/emissor (ex: Inter, Nubank, Itaú)",
-    "cardLastDigits": "Últimos 4 dígitos do cartão (ex: 2440)",
+    "institution": "Nome do banco/emissor (ex: Nubank, Inter, Itaú, Bradesco, C6 Bank)",
+    "cardLastDigits": "Últimos 4 dígitos do cartão principal (ex: 8970)",
     "dueDate": "Data de vencimento em ISO 8601",
     "totalAmount": Valor total da fatura como número (JÁ com estornos descontados),
-    "holderName": "Nome do titular"
+    "holderName": "Nome do titular",
+    "periodStart": "Data início do período em ISO 8601 (se disponível)",
+    "periodEnd": "Data fim do período em ISO 8601 (se disponível)"
   },
   "transactions": [
     {
@@ -600,7 +711,7 @@ Se o documento for uma fatura de cartão de crédito (contém múltiplas compras
       "category": "Categoria sugerida",
       "description": "Descrição adicional se houver",
       "installmentInfo": "Parcela X/Y ou X de Y (formato encontrado no documento)",
-      "cardLastDigits": "Últimos 4 dígitos do cartão desta compra",
+      "cardLastDigits": "Últimos 4 dígitos do cartão desta compra (pode variar por transação)",
       "isRefund": true/false (se for estorno/crédito/reembolso)
     }
   ]
@@ -618,6 +729,32 @@ Se for um documento com apenas UMA transação, retorne:
   "items": [{"description": "Item", "totalPrice": valor}] ou null
 }
 
+FORMATOS DE FATURAS BRASILEIRAS - MUITO IMPORTANTE:
+
+**NUBANK (logo roxo "nu"):**
+- Datas aparecem como "31 OUT", "05 NOV", "08 DEZ 2025" → converta para ISO 8601
+- Últimos 4 dígitos aparecem como "•••• 8970" ou com ícone de celular
+- Seção "TRANSAÇÕES" contém as compras normais
+- Seção "Pagamentos e Financiamentos" contém:
+  - "Pagamento em DD MMM" → IGNORAR (é pagamento da fatura anterior)
+  - Financiamentos/empréstimos com "Total a pagar" e detalhes de IOF/juros → INCLUIR como categoria "Financiamento"
+- "-R$" na frente do valor indica PAGAMENTO (ignorar) ou ESTORNO (incluir com isRefund: true)
+- Compras via NuPay aparecem com ícone "nu" roxo
+
+**INTER (logo laranja):**
+- Datas no formato DD/MM/YYYY ou DD MMM
+- Últimos 4 dígitos do cartão aparecem claramente
+- Parcelas no formato "Parcela X de Y"
+
+**OUTROS BANCOS (Itaú, Bradesco, Santander, C6, etc.):**
+- Formatos similares, adapte conforme o documento
+
+REGRAS DE DATAS ABREVIADAS:
+- "31 OUT" ou "31 OUT 2025" → 2025-10-31T00:00:00.000Z
+- "05 NOV" → Use o ano da fatura (geralmente no cabeçalho)
+- "08 DEZ 2025" → 2025-12-08T00:00:00.000Z
+- Meses: JAN=01, FEV=02, MAR=03, ABR=04, MAI=05, JUN=06, JUL=07, AGO=08, SET=09, OUT=10, NOV=11, DEZ=12
+
 REGRAS DE PARCELAMENTO - MUITO IMPORTANTE:
 - Identifique TODAS as compras parceladas na fatura
 - O parcelamento pode aparecer em vários formatos: "Parcela 6/10", "(Parcela 03 de 12)", "1/2", "2 de 3", etc.
@@ -625,21 +762,23 @@ REGRAS DE PARCELAMENTO - MUITO IMPORTANTE:
 - Mesmo se a parcela for 1/1, inclua se estiver indicado
 
 REGRAS DE ESTORNO/REEMBOLSO:
-- Estornos aparecem com "+" antes do valor (ex: "+ R$ 135,99")
+- Estornos aparecem com "+" antes do valor (ex: "+ R$ 135,99") ou com "-R$" em alguns bancos
 - Para estornos: marque "isRefund": true e use o valor POSITIVO
 - NÃO subtraia o valor do estorno de nenhum total (o banco já fez isso)
 - Estornos serão salvos como Receita (crédito na fatura)
 
 REGRAS DE PAGAMENTO DE FATURA:
-- Ignore linhas de "Pagamento de fatura" ou "Pagamento efetuado" - são movimentações internas
+- Ignore linhas de "Pagamento de fatura", "Pagamento efetuado", "Pagamento em DD MMM" - são movimentações internas
+- Essas linhas geralmente têm "-R$" e são pagamentos da fatura anterior
 
 REGRAS GERAIS:
 1. Converta R$ para números: "R$ 1.200,50" → 1200.50
-2. Datas DD/MM/YYYY ou "DD de MMM. YYYY" → ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ)
+2. Datas DD/MM/YYYY ou "DD de MMM. YYYY" ou "DD MMM YYYY" → ISO 8601 (YYYY-MM-DDTHH:mm:ss.sssZ)
 3. Se não tiver hora, use T00:00:00.000Z
-4. EXTRAIA TODAS as transações da fatura, não apenas algumas
+4. EXTRAIA TODAS as transações da fatura, não apenas algumas - PERCORRA TODO O DOCUMENTO
 5. Para categoria: use uma das disponíveis ou sugira uma apropriada em português
 6. Retorne APENAS o JSON, sem texto adicional
+7. Cada cartão pode ter dígitos diferentes (ex: •••• 8970 vs •••• 8622) - capture isso em cardLastDigits
 
 Extraia os dados agora:`;
     }

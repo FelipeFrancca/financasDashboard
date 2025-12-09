@@ -268,3 +268,43 @@ export const desvincularGoogle = async (req: Request, res: Response) => {
         message: 'Conta Google desvinculada com sucesso',
     });
 };
+
+export const buscarUsuarios = async (req: Request, res: Response) => {
+    const authReq = req as AuthRequest;
+    const currentUserId = authReq.user!.userId;
+    const { q } = req.query;
+
+    if (!q || typeof q !== 'string' || q.length < 2) {
+        return res.json({
+            success: true,
+            data: [],
+        });
+    }
+
+    // Search for users by email or name (excluding current user)
+    const users = await prisma.user.findMany({
+        where: {
+            AND: [
+                { id: { not: currentUserId } },
+                {
+                    OR: [
+                        { email: { contains: q, mode: 'insensitive' } },
+                        { name: { contains: q, mode: 'insensitive' } },
+                    ],
+                },
+            ],
+        },
+        select: {
+            id: true,
+            email: true,
+            name: true,
+            avatar: true,
+        },
+        take: 10, // Limit results
+    });
+
+    res.json({
+        success: true,
+        data: users,
+    });
+};

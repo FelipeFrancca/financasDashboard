@@ -335,6 +335,133 @@ class EmailServico {
   }
 
   /**
+   * Envia email de notificação de compartilhamento de dashboard
+   */
+  async enviarNotificacaoCompartilhamento(params: {
+    email: string;
+    nomeDestinatario: string;
+    nomeRemetente: string;
+    dashboardTitle: string;
+    dashboardId: string;
+    role: 'VIEWER' | 'EDITOR';
+  }): Promise<void> {
+    const { email, nomeDestinatario, nomeRemetente, dashboardTitle, dashboardId, role } = params;
+
+    const roleText = role === 'EDITOR' ? 'Editor' : 'Visualizador';
+    const roleDescription = role === 'EDITOR'
+      ? 'Você pode visualizar e editar transações neste dashboard.'
+      : 'Você pode visualizar os dados deste dashboard.';
+    const roleColor = role === 'EDITOR' ? '#f39c12' : '#3498db';
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 40px; text-align: center; border-radius: 10px 10px 0 0; }
+          .header h1 { margin: 0; font-size: 24px; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .share-box { background: white; border-radius: 12px; padding: 25px; margin: 20px 0; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          .share-icon { font-size: 48px; text-align: center; margin-bottom: 15px; }
+          .dashboard-name { font-size: 20px; font-weight: bold; color: #333; text-align: center; margin-bottom: 10px; }
+          .shared-by { color: #666; text-align: center; font-size: 14px; margin-bottom: 20px; }
+          .role-badge { 
+            display: inline-block; 
+            padding: 8px 20px; 
+            background: ${roleColor}; 
+            color: white; 
+            border-radius: 20px; 
+            font-weight: bold;
+            font-size: 14px;
+          }
+          .role-container { text-align: center; margin: 20px 0; }
+          .role-description { color: #666; text-align: center; font-size: 14px; margin-top: 10px; }
+          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+          .btn { 
+            display: inline-block; 
+            padding: 14px 35px; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+            text-decoration: none; 
+            border-radius: 8px; 
+            font-weight: bold;
+            font-size: 16px;
+          }
+          .btn:hover { opacity: 0.9; }
+          .btn-container { text-align: center; margin: 25px 0; }
+          .divider { border-top: 1px solid #eee; margin: 20px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📊 Novo Dashboard Compartilhado!</h1>
+          </div>
+          <div class="content">
+            <p>Olá, <strong>${nomeDestinatario || 'Usuário'}</strong>!</p>
+            
+            <div class="share-box">
+              <div class="share-icon">🤝</div>
+              <div class="dashboard-name">${dashboardTitle}</div>
+              <div class="shared-by">Compartilhado por <strong>${nomeRemetente}</strong></div>
+              
+              <div class="divider"></div>
+              
+              <div class="role-container">
+                <span class="role-badge">${roleText}</span>
+                <div class="role-description">${roleDescription}</div>
+              </div>
+            </div>
+
+            <div class="btn-container">
+              <a href="${frontendUrl}/dashboard/${dashboardId}" class="btn">
+                Acessar Dashboard
+              </a>
+            </div>
+
+            <p style="color: #666; font-size: 14px; text-align: center;">
+              Você agora pode acessar este dashboard diretamente pela sua conta.
+            </p>
+          </div>
+          <div class="footer">
+            <p>Esta é uma mensagem automática do sistema Finanças Dashboard.</p>
+            <p>Se você não esperava receber este email, pode ignorá-lo com segurança.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `
+      Novo Dashboard Compartilhado!
+      
+      Olá, ${nomeDestinatario || 'Usuário'}!
+      
+      ${nomeRemetente} compartilhou o dashboard "${dashboardTitle}" com você.
+      
+      Sua permissão: ${roleText}
+      ${roleDescription}
+      
+      Acesse: ${frontendUrl}/dashboard/${dashboardId}
+      
+      ---
+      Esta é uma mensagem automática do sistema Finanças Dashboard.
+    `;
+
+    await this.enviarEmail({
+      to: email,
+      subject: `📊 ${nomeRemetente} compartilhou um dashboard com você`,
+      html,
+      text,
+    });
+  }
+
+  /**
    * Verifica a conexão com o servidor SMTP
    */
   async verificarConexao(): Promise<boolean> {

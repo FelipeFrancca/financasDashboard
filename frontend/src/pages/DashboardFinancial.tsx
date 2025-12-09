@@ -3,6 +3,8 @@ import {
   Box,
   Container,
   useTheme,
+  Typography,
+  Button,
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import type { Transaction, TransactionFilters } from '../types';
@@ -31,13 +33,24 @@ export default function DashboardFinancial() {
   const { dashboardId } = useParams<{ dashboardId: string }>();
   const theme = useTheme();
 
-  const [filters, setFilters] = useState<TransactionFilters>({});
+  // Inicializar filtros com o mês atual
+  const getInitialFilters = (): TransactionFilters => {
+    const now = new Date();
+    const startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return {
+      startDate: startDate.toISOString().split('T')[0],
+      endDate: endDate.toISOString().split('T')[0],
+    };
+  };
+
+  const [filters, setFilters] = useState<TransactionFilters>(getInitialFilters);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
 
   // Custom Hooks
-  const { data: transactions = [], refetch, isLoading } = useTransactions(filters, dashboardId);
+  const { data: transactions = [], refetch, isLoading, error } = useTransactions(filters, dashboardId);
   const { data: stats } = useTransactionStats(filters, dashboardId);
 
   const createTransaction = useCreateTransaction();
@@ -222,6 +235,53 @@ export default function DashboardFinancial() {
           ]}
         />
         <DashboardSkeleton />
+      </Container>
+    );
+  }
+
+  // Pending Approval State
+  const errorMessage = (error as any)?.response?.data?.error || (error as any)?.message;
+  // Check strict error message or if status is pending (needs backend to send specific code ideally, but string match works for now)
+  if (errorMessage?.includes('pendente de aprovação')) {
+    return (
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <PageHeader
+          title="Visão Geral"
+          breadcrumbs={[
+            { label: 'Dashboards', to: '/dashboards' },
+            { label: 'Financeiro' }
+          ]}
+        />
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            py: 8,
+            textAlign: 'center',
+            gap: 2
+          }}
+        >
+          <Box sx={{ p: 3, borderRadius: '50%', bgcolor: 'warning.light', mb: 2, display: 'inline-flex' }}>
+            <Box component="span" sx={{ fontSize: 60, lineHeight: 1 }}>⏳</Box>
+          </Box>
+
+          <Typography variant="h4" fontWeight="bold" gutterBottom>
+            Aguardando Aprovação
+          </Typography>
+          <Typography variant="body1" color="text.secondary" maxWidth="sm">
+            Sua solicitação para acessar este dashboard foi enviada e está aguardando aprovação do proprietário.
+            Você receberá uma notificação assim que o acesso for liberado.
+          </Typography>
+          <Button
+            variant="outlined"
+            onClick={() => window.location.href = '/dashboards'}
+            sx={{ mt: 2 }}
+          >
+            Voltar para Meus Dashboards
+          </Button>
+        </Box>
       </Container>
     );
   }

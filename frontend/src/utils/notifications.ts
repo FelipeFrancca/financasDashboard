@@ -2,6 +2,15 @@ import Swal from 'sweetalert2';
 import type { AxiosError } from 'axios';
 
 // Configure SweetAlert2 defaults to prevent aria-hidden warnings
+// Fix z-index issue with MUI Dialogs
+const style = document.createElement('style');
+style.innerHTML = `
+  .swal2-container {
+    z-index: 2000 !important;
+  }
+`;
+document.head.appendChild(style);
+
 const MySwal = Swal.mixin({
     heightAuto: false, // Prevents body scroll issues
     didOpen: () => {

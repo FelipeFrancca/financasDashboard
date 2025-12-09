@@ -135,6 +135,11 @@ export const authService = {
     const { data } = await api.delete('/auth/google-link');
     return data;
   },
+
+  searchUsers: async (query: string) => {
+    const { data } = await api.get('/auth/users/search', { params: { q: query } });
+    return data.data;
+  },
 };
 
 
@@ -251,6 +256,16 @@ export const dashboardService = {
 
   removeMember: async (dashboardId: string, userId: string) => {
     await api.delete(`/dashboards/${dashboardId}/members/${userId}`);
+  },
+
+  updateMember: async (dashboardId: string, userId: string, role: 'VIEWER' | 'EDITOR') => {
+    const { data } = await api.put(`/dashboards/${dashboardId}/members/${userId}`, { role });
+    return data.data;
+  },
+
+  approveMember: async (dashboardId: string, userId: string) => {
+    const { data } = await api.put(`/dashboards/${dashboardId}/members/${userId}/approve`);
+    return data.data;
   },
 };
 

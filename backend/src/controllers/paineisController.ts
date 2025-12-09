@@ -19,6 +19,26 @@ export const listarMembros = async (req: AuthRequest, res: Response) => {
     res.json({ success: true, data: membros });
 };
 
+export const atualizarMembro = async (req: AuthRequest, res: Response) => {
+    const { role } = req.body;
+    const membro = await paineisServico.updateMemberRole(
+        req.user!.userId,
+        req.params.id,
+        req.params.userId,
+        role as DashboardRole
+    );
+    res.json({ success: true, data: membro });
+};
+
+export const aprovarMembro = async (req: AuthRequest, res: Response) => {
+    const membro = await paineisServico.approveMember(
+        req.user!.userId,
+        req.params.id,
+        req.params.userId
+    );
+    res.json({ success: true, data: membro });
+};
+
 export const listarDashboards = async (req: AuthRequest, res: Response) => {
     const dashboards = await paineisServico.listDashboards(req.user!.userId);
     res.json({ success: true, data: dashboards });

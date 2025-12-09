@@ -1,6 +1,9 @@
-import { Dashboard, DashboardRole, DashboardMember } from '@prisma/client';
+import { Dashboard, DashboardRole, DashboardMember, MemberStatus } from '@prisma/client';
 import { prisma } from '../database/conexao';
 import { NotFoundError, ForbiddenError } from '../utils/AppError';
+import emailServico from './emailServico';
+import { logger } from '../utils/logger';
+import { getNotificationPreferences } from './notificationPreferencesServico';
 
 // Verificar permissão
 export async function checkPermission(userId: string, dashboardId: string, requiredRole: DashboardRole[] = ['OWNER', 'EDITOR', 'VIEWER']) {
@@ -10,11 +13,17 @@ export async function checkPermission(userId: string, dashboardId: string, requi
     }
   });
 
+  // Se for dono, acesso total
+  const dashboard = await prisma.dashboard.findUnique({ where: { id: dashboardId } });
+  if (dashboard?.ownerId === userId) return 'OWNER';
+
   if (!member) {
-    // Verificar se é dono
-    const dashboard = await prisma.dashboard.findUnique({ where: { id: dashboardId } });
-    if (dashboard?.ownerId === userId) return 'OWNER';
     throw new ForbiddenError('Acesso negado ao dashboard');
+  }
+
+  // Verifica status do membro
+  if (member.status !== 'APPROVED') {
+    throw new ForbiddenError('Sua solicitação de acesso ainda está pendente de aprovação.');
   }
 
   if (!requiredRole.includes(member.role)) {
@@ -31,13 +40,45 @@ export async function addMember(ownerId: string, dashboardId: string, email: str
   const userToAdd = await prisma.user.findUnique({ where: { email } });
   if (!userToAdd) throw new NotFoundError('Usuário não encontrado');
 
-  return prisma.dashboardMember.create({
+  // Buscar informações do dashboard e do owner para o email
+  const dashboard = await prisma.dashboard.findUnique({
+    where: { id: dashboardId },
+    include: { owner: { select: { name: true, email: true } } }
+  });
+
+  const member = await prisma.dashboardMember.create({
     data: {
       userId: userToAdd.id,
       dashboardId,
       role,
+      status: 'APPROVED' // Direct add is always approved
     }
   });
+
+  // Enviar email de notificação de forma assíncrona (não bloqueia a resposta)
+  if (dashboard && role !== 'OWNER') {
+    // Verificar preferências do usuário destinatário
+    getNotificationPreferences(userToAdd.id).then((preferences) => {
+      if (preferences.emailEnabled && preferences.emailDashboardInvites) {
+        emailServico.enviarNotificacaoCompartilhamento({
+          email: userToAdd.email,
+          nomeDestinatario: userToAdd.name || 'Usuário',
+          nomeRemetente: dashboard.owner.name || 'Um usuário',
+          dashboardTitle: dashboard.title,
+          dashboardId: dashboard.id,
+          role: role as 'VIEWER' | 'EDITOR',
+        }).catch((error) => {
+          logger.error('Erro ao enviar email de notificação de compartilhamento:', error);
+        });
+      } else {
+        logger.info(`Email de compartilhamento não enviado para ${userToAdd.email} - notificações desabilitadas`);
+      }
+    }).catch((error) => {
+      logger.error('Erro ao verificar preferências de notificação:', error);
+    });
+  }
+
+  return member;
 }
 
 export async function removeMember(requesterId: string, dashboardId: string, userIdToRemove: string) {
@@ -50,13 +91,73 @@ export async function removeMember(requesterId: string, dashboardId: string, use
   });
 }
 
+export async function updateMemberRole(requesterId: string, dashboardId: string, userId: string, role: DashboardRole) {
+  await checkPermission(requesterId, dashboardId, ['OWNER']);
+
+  // Cannot change to OWNER role
+  if (role === 'OWNER') {
+    throw new ForbiddenError('Não é possível alterar para proprietário');
+  }
+
+  return prisma.dashboardMember.update({
+    where: {
+      dashboardId_userId: { userId, dashboardId }
+    },
+    data: { role },
+    include: { user: { select: { id: true, name: true, email: true, avatar: true } } }
+  });
+}
+
+// Aprovar membro
+export async function approveMember(ownerId: string, dashboardId: string, memberId: string) {
+  await checkPermission(ownerId, dashboardId, ['OWNER']);
+
+  const member = await prisma.dashboardMember.update({
+    where: {
+      dashboardId_userId: { userId: memberId, dashboardId }
+    },
+    data: { status: 'APPROVED' },
+    include: { user: true, dashboard: true }
+  });
+
+  // Notificar o membro aprovado (opcional, reutilizando lógica de email)
+  try {
+    const preferences = await getNotificationPreferences(memberId);
+    if (preferences.emailEnabled && preferences.emailDashboardInvites) {
+      await emailServico.enviarNotificacaoCompartilhamento({
+        email: member.user.email,
+        nomeDestinatario: member.user.name || 'Usuário',
+        nomeRemetente: 'Administrador do Dashboard',
+        dashboardTitle: member.dashboard.title,
+        dashboardId: member.dashboard.id,
+        role: member.role as 'VIEWER' | 'EDITOR'
+      });
+    }
+  } catch (error) {
+    logger.error('Erro ao enviar notificação de aprovação:', error);
+  }
+
+  return member;
+}
+
 export async function listMembers(userId: string, dashboardId: string) {
   await checkPermission(userId, dashboardId);
 
-  return prisma.dashboardMember.findMany({
-    where: { dashboardId },
-    include: { user: { select: { id: true, name: true, email: true, avatar: true } } }
-  });
+  const [members, dashboard] = await Promise.all([
+    prisma.dashboardMember.findMany({
+      where: { dashboardId },
+      include: { user: { select: { id: true, name: true, email: true, avatar: true } } }
+    }),
+    prisma.dashboard.findUnique({
+      where: { id: dashboardId },
+      select: { ownerId: true }
+    })
+  ]);
+
+  return {
+    members,
+    ownerId: dashboard?.ownerId || null
+  };
 }
 
 // Listar todos os dashboards do usuário (próprios e como membro)
@@ -75,7 +176,10 @@ export async function listDashboards(userId: string) {
 
   // Buscar dashboards onde o usuário é membro
   const memberDashboards = await prisma.dashboardMember.findMany({
-    where: { userId },
+    where: {
+      userId,
+      status: 'APPROVED' // Apenas dashboards onde o usuário está aprovado
+    },
     include: {
       dashboard: {
         include: {
@@ -190,7 +294,7 @@ export async function createInvite(userId: string, dashboardId: string, opts: { 
 export async function acceptInvite(userId: string, code: string) {
   const invite = await prisma.dashboardInvite.findUnique({
     where: { code },
-    include: { dashboard: true }
+    include: { dashboard: { include: { owner: true } } }
   });
 
   if (!invite) throw new NotFoundError('Convite não encontrado');
@@ -209,22 +313,26 @@ export async function acceptInvite(userId: string, code: string) {
 
   if (existingMember) throw new ForbiddenError('Você já é membro deste dashboard');
 
-  // Adicionar membro
-  await prisma.dashboardMember.create({
+  // Adicionar membro como PENDING
+  const member = await prisma.dashboardMember.create({
     data: {
       userId,
       dashboardId: invite.dashboardId,
-      role: invite.role
+      role: invite.role,
+      status: 'PENDING'
     }
   });
 
-  // Marcar como usado se for one-time
+  // Marcar convite como usado se for one-time
   if (invite.isOneTime) {
     await prisma.dashboardInvite.update({
       where: { id: invite.id },
       data: { usedById: userId }
     });
   }
+
+  // Notificar o dono do dashboard sobre a solicitação pendente
+  logger.info(`Usuário ${userId} solicitou acesso ao dashboard ${invite.dashboardId} via convite (PENDING)`);
 
   return invite.dashboard;
 }
@@ -236,9 +344,10 @@ export async function getSharedPreview(code: string) {
     include: {
       dashboard: {
         include: {
-          owner: { select: { name: true, avatar: true } }
+          owner: { select: { id: true, name: true, avatar: true } }
         }
-      }
+      },
+      createdBy: { select: { id: true, name: true, avatar: true } }
     }
   });
 
@@ -247,9 +356,15 @@ export async function getSharedPreview(code: string) {
   if (invite.isOneTime && invite.usedById) throw new ForbiddenError('Convite já utilizado');
 
   return {
-    dashboardTitle: invite.dashboard.title,
-    dashboardDescription: invite.dashboard.description,
-    ownerName: invite.dashboard.owner.name,
-    role: invite.role
+    dashboard: {
+      title: invite.dashboard.title,
+      description: invite.dashboard.description,
+    },
+    role: invite.role,
+    inviter: {
+      name: invite.createdBy?.name || invite.dashboard.owner.name,
+      avatar: invite.createdBy?.avatar || invite.dashboard.owner.avatar,
+    },
+    expiresAt: invite.expiresAt,
   };
 }

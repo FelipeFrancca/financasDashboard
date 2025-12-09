@@ -6,6 +6,7 @@ export interface DashboardMember {
     userId: string;
     dashboardId: string;
     role: 'OWNER' | 'EDITOR' | 'VIEWER';
+    status: 'APPROVED' | 'PENDING';
     createdAt: string;
     user: {
         id: string;
@@ -15,9 +16,14 @@ export interface DashboardMember {
     };
 }
 
+export interface DashboardMembersResponse {
+    members: DashboardMember[];
+    ownerId: string | null;
+}
+
 export const useDashboardMembers = (dashboardId: string) => {
-    return useQuery({
-        queryKey: ['dashboard-members', dashboardId],
+    return useQuery<DashboardMembersResponse>({
+        queryKey: ['dashboard-members-list', dashboardId], // Changed key to force refresh
         queryFn: () => dashboardService.getMembers(dashboardId),
         enabled: !!dashboardId,
         staleTime: 1000 * 60 * 5, // 5 minutes
@@ -31,7 +37,7 @@ export const useAddDashboardMember = () => {
         mutationFn: ({ dashboardId, email, role }: { dashboardId: string; email: string; role: 'VIEWER' | 'EDITOR' }) =>
             dashboardService.addMember(dashboardId, email, role),
         onSuccess: (_data, variables) => {
-            queryClient.invalidateQueries({ queryKey: ['dashboard-members', variables.dashboardId] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard-members-list', variables.dashboardId] });
         },
     });
 };
@@ -43,7 +49,31 @@ export const useRemoveDashboardMember = () => {
         mutationFn: ({ dashboardId, userId }: { dashboardId: string; userId: string }) =>
             dashboardService.removeMember(dashboardId, userId),
         onSuccess: (_data, variables) => {
-            queryClient.invalidateQueries({ queryKey: ['dashboard-members', variables.dashboardId] });
+            queryClient.invalidateQueries({ queryKey: ['dashboard-members-list', variables.dashboardId] });
+        },
+    });
+};
+
+export const useUpdateDashboardMember = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ dashboardId, userId, role }: { dashboardId: string; userId: string; role: 'VIEWER' | 'EDITOR' }) =>
+            dashboardService.updateMember(dashboardId, userId, role),
+        onSuccess: (_data, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['dashboard-members-list', variables.dashboardId] });
+        },
+    });
+};
+
+export const useApproveDashboardMember = () => {
+    const queryClient = useQueryClient();
+
+    return useMutation({
+        mutationFn: ({ dashboardId, userId }: { dashboardId: string; userId: string }) =>
+            dashboardService.approveMember(dashboardId, userId),
+        onSuccess: (_data, variables) => {
+            queryClient.invalidateQueries({ queryKey: ['dashboard-members-list', variables.dashboardId] });
         },
     });
 };

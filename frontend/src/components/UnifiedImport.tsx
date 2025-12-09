@@ -291,6 +291,66 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
   };
 
   /**
+   * Encontra conta por nome da instituição (busca fuzzy)
+   * Útil para associar transações a contas bancárias regulares
+   */
+  const findMatchingAccountByInstitution = (institutionName: string | null | undefined): Account | undefined => {
+    if (!institutionName) return undefined;
+
+    const normalizedSearch = institutionName.toLowerCase().trim();
+
+    // Primeiro, busca exata no campo institution
+    let match = accounts.find(
+      (acc: Account) =>
+        acc.status === 'ACTIVE' &&
+        acc.institution?.toLowerCase() === normalizedSearch
+    );
+    if (match) return match;
+
+    // Segundo, busca parcial no nome da conta ou institution
+    match = accounts.find(
+      (acc: Account) =>
+        acc.status === 'ACTIVE' &&
+        (acc.name.toLowerCase().includes(normalizedSearch) ||
+          acc.institution?.toLowerCase().includes(normalizedSearch) ||
+          normalizedSearch.includes(acc.name.toLowerCase()) ||
+          (acc.institution && normalizedSearch.includes(acc.institution.toLowerCase())))
+    );
+
+    return match;
+  };
+
+  /**
+   * Cria uma nova conta bancária (não cartão de crédito) automaticamente
+   */
+  const createBankAccount = async (
+    institutionName: string,
+    accountType: 'CHECKING' | 'SAVINGS' = 'CHECKING'
+  ): Promise<Account | undefined> => {
+    try {
+      const newAccount = await createAccount.mutateAsync({
+        data: {
+          name: institutionName,
+          type: accountType,
+          institution: institutionName,
+          currency: 'BRL',
+          initialBalance: 0,
+          currentBalance: 0,
+          availableBalance: 0,
+          status: 'ACTIVE',
+          isPrimary: false,
+        },
+        dashboardId: dashboardId || '',
+      });
+
+      return newAccount as Account;
+    } catch (error) {
+      console.error('Erro ao criar conta bancária:', error);
+      return undefined;
+    }
+  };
+
+  /**
    * Cria uma nova conta de cartão de crédito automaticamente
    */
   const createCreditCardAccount = async (
@@ -690,21 +750,24 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
       }
     }
 
-    // ===== VINCULAÇÃO AUTOMÁTICA A CARTÃO DE CRÉDITO =====
-    // Tentar encontrar ou criar conta de cartão com base nos dados da fatura
+    // ===== VINCULAÇÃO AUTOMÁTICA A CONTA =====
+    // Tentar encontrar ou criar conta com base nos dados da fatura/documento
     let linkedAccountId: string | undefined;
     let linkedInstitution: string | undefined;
 
     const cardDigits = result.statementInfo?.cardLastDigits;
+    const institutionName = result.statementInfo?.institution;
+
+    // ESTRATÉGIA 1: Buscar por últimos 4 dígitos do cartão (para faturas de cartão)
     if (cardDigits) {
-      // Primeiro, buscar conta existente
       const existingCard = findMatchingCreditCard(cardDigits);
 
       if (existingCard) {
         linkedAccountId = existingCard.id;
         linkedInstitution = existingCard.institution;
+        console.log(`✅ Conta de cartão encontrada: ${existingCard.name}`);
       } else {
-        // Conta não existe, perguntar se deseja criar automaticamente
+        // Conta de cartão não existe, perguntar se deseja criar
         const dueDay = result.statementInfo?.dueDate
           ? new Date(result.statementInfo.dueDate).getDate()
           : undefined;
@@ -723,7 +786,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
           const newAccount = await createCreditCardAccount(
             cardDigits,
             result.statementInfo?.holderName,
-            result.statementInfo?.institution,
+            institutionName,
             dueDay
           );
 
@@ -735,8 +798,89 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         }
       }
     }
+    // ESTRATÉGIA 2: Buscar por nome da instituição (para extratos bancários, boletos, etc.)
+    else if (institutionName && !linkedAccountId) {
+      const existingAccount = findMatchingAccountByInstitution(institutionName);
 
-    // Get account details for date calculation
+      if (existingAccount) {
+        linkedAccountId = existingAccount.id;
+        linkedInstitution = existingAccount.institution || existingAccount.name;
+        console.log(`✅ Conta encontrada por instituição: ${existingAccount.name}`);
+      } else {
+        // Nenhuma conta correspondente encontrada
+        // Oferecer opções: criar nova, selecionar existente ou não vincular
+        const activeAccounts = accounts.filter((a: Account) => a.status === 'ACTIVE');
+
+        let message = `Não foi encontrada nenhuma conta correspondente a "${institutionName}".`;
+        if (activeAccounts.length > 0) {
+          message += `\n\nVocê tem ${activeAccounts.length} conta(s) cadastrada(s). O que deseja fazer?`;
+        } else {
+          message += `\n\nDeseja criar uma nova conta com este nome?`;
+        }
+
+        const accountResult = await showConfirm(message, {
+          title: '🏦 Vincular a uma Conta',
+          icon: 'question',
+          confirmButtonText: `Criar "${institutionName}"`,
+          showDenyButton: activeAccounts.length > 0,
+          denyButtonText: 'Selecionar conta existente',
+          denyButtonColor: '#6366f1',
+          cancelButtonText: 'Importar sem vincular',
+        });
+
+        if (accountResult.isConfirmed) {
+          // Criar nova conta
+          const newAccount = await createBankAccount(institutionName);
+
+          if (newAccount) {
+            linkedAccountId = newAccount.id;
+            linkedInstitution = newAccount.institution;
+            showSuccess(`Conta "${newAccount.name}" criada automaticamente!`);
+          }
+        } else if (accountResult.isDenied && activeAccounts.length > 0) {
+          // Usuário quer selecionar uma conta existente
+          // Mostrar lista de contas para seleção
+          const accountOptions = activeAccounts
+            .map((acc: Account) => `<option value="${acc.id}">${acc.name} ${acc.institution ? `(${acc.institution})` : ''}</option>`)
+            .join('');
+
+          const { default: Swal } = await import('sweetalert2');
+          const selectResult = await Swal.fire({
+            title: 'Selecionar Conta',
+            html: `
+              <p style="margin-bottom: 16px;">Escolha a conta para vincular às transações de <strong>${institutionName}</strong>:</p>
+              <select id="account-select" class="swal2-select" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                ${accountOptions}
+              </select>
+            `,
+            confirmButtonText: 'Vincular',
+            cancelButtonText: 'Cancelar',
+            showCancelButton: true,
+            preConfirm: () => {
+              const select = document.getElementById('account-select') as HTMLSelectElement;
+              return select?.value;
+            },
+          });
+
+          if (selectResult.isConfirmed && selectResult.value) {
+            const selectedAccount = accounts.find((a: Account) => a.id === selectResult.value);
+            if (selectedAccount) {
+              linkedAccountId = selectedAccount.id;
+              linkedInstitution = selectedAccount.institution || selectedAccount.name;
+              showSuccess(`Transações serão vinculadas a "${selectedAccount.name}"`);
+            }
+          }
+        }
+        // Else: usuário escolheu "Importar sem vincular" - não faz nada
+      }
+    }
+
+    // Usar institution da fatura caso não tenha da conta
+    if (!linkedInstitution) {
+      linkedInstitution = institutionName || undefined;
+    }
+
+    // Get account details for date calculation (closing day and due day for installments)
     let linkedAccountClosingDay: number | undefined;
     let linkedAccountDueDay: number | undefined;
 
@@ -746,11 +890,6 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         linkedAccountClosingDay = acc.closingDay;
         linkedAccountDueDay = acc.dueDay;
       }
-    }
-
-    // Usar institution da fatura caso não tenha da conta
-    if (!linkedInstitution) {
-      linkedInstitution = result.statementInfo?.institution || undefined;
     }
 
     // Preparar transações para salvar (incluindo parcelas futuras)
