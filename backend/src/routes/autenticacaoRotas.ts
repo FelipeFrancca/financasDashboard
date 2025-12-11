@@ -50,7 +50,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
 // Rotas
 router.post("/register", authLimiter, validateBody(registerSchema), asyncHandler(authController.registrar as any));
-router.post("/login", authLimiter, validateBody(loginSchema), asyncHandler(authController.login as any));
+router.post("/login", validateBody(loginSchema), asyncHandler(authController.login as any));
 
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"], session: false }));
 router.get(

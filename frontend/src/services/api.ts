@@ -206,6 +206,59 @@ export const transactionService = {
     });
     return data.data;
   },
+
+  // Export operations
+  exportCSV: async (dashboardId: string, filters?: TransactionFilters, ids?: string[]): Promise<void> => {
+    const params: any = { ...filters, dashboardId, format: 'csv' };
+    if (ids && ids.length > 0) {
+      params.ids = ids.join(',');
+    }
+
+    const response = await api.get('/transactions/export', {
+      params,
+      responseType: 'blob',
+    });
+
+    const filename = response.headers['content-disposition']
+      ?.split('filename="')[1]?.split('"')[0] || `transacoes_${new Date().toISOString().split('T')[0]}.csv`;
+
+    const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
+
+  exportXLSX: async (dashboardId: string, filters?: TransactionFilters, ids?: string[]): Promise<void> => {
+    const params: any = { ...filters, dashboardId, format: 'xlsx' };
+    if (ids && ids.length > 0) {
+      params.ids = ids.join(',');
+    }
+
+    const response = await api.get('/transactions/export', {
+      params,
+      responseType: 'blob',
+    });
+
+    const filename = response.headers['content-disposition']
+      ?.split('filename="')[1]?.split('"')[0] || `transacoes_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    const blob = new Blob([response.data], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  },
 };
 
 export const dashboardService = {

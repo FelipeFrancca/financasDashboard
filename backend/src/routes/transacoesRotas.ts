@@ -16,6 +16,7 @@ router.delete('/bulk', authenticateToken, asyncHandler(transacoesController.dele
 router.get('/', authenticateToken, asyncHandler(transacoesController.listarTransacoes as any));
 router.get('/summary', authenticateToken, asyncHandler(transacoesController.obterResumo as any));
 router.get('/stats/summary', authenticateToken, asyncHandler(transacoesController.obterResumo as any));
+router.get('/export', authenticateToken, asyncHandler(transacoesController.exportarTransacoes as any));
 
 // Rotas de grupo de parcelas (devem vir antes de /:id)
 router.get('/installment-group/:groupId', authenticateToken, asyncHandler(transacoesController.obterGrupoParcelas as any));

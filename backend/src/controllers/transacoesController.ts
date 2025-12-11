@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import * as transacoesServico from '../services/transacoesServico';
+import { generateCSV, generateXLSX } from '../services/exportService';
 import { AuthRequest } from '../middleware/auth';
 
 export const criarTransacao = async (req: AuthRequest, res: Response) => {
@@ -127,3 +128,50 @@ export const deletarTransacoesEmLote = async (req: AuthRequest, res: Response) =
     res.json({ success: true, data: result });
 };
 
+// ============ EXPORTAÇÃO ============
+
+export const exportarTransacoes = async (req: AuthRequest, res: Response) => {
+    const { dashboardId, format = 'csv', ids } = req.query;
+
+    if (!dashboardId || typeof dashboardId !== 'string') {
+        return res.status(400).json({ success: false, error: 'dashboardId é obrigatório' });
+    }
+
+    const validFormats = ['csv', 'xlsx'];
+    const exportFormat = validFormats.includes(format as string) ? format as string : 'csv';
+
+    try {
+        // Fetch transactions with optional filter by IDs
+        let transactions = await transacoesServico.getAllTransactions(req.query, dashboardId, req.user!.userId);
+
+        // If specific IDs are provided, filter to only those transactions
+        if (ids && typeof ids === 'string') {
+            const idList = ids.split(',').map(id => id.trim());
+            transactions = transactions.filter(t => idList.includes(t.id));
+        }
+
+        if (transactions.length === 0) {
+            return res.status(404).json({ success: false, error: 'Nenhuma transação encontrada para exportar' });
+        }
+
+        const dateStr = new Date().toISOString().split('T')[0];
+        const filename = `transacoes_${dateStr}`;
+
+        if (exportFormat === 'xlsx') {
+            const buffer = await generateXLSX(transactions, 'Transações');
+
+            res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
+            res.send(buffer);
+        } else {
+            const csvContent = generateCSV(transactions);
+
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+            res.send(csvContent);
+        }
+    } catch (error) {
+        console.error('[ExportController] Error exporting transactions:', error);
+        res.status(500).json({ success: false, error: 'Erro ao exportar transações' });
+    }
+};

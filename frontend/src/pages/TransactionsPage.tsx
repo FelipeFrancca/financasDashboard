@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   Box,
   Container,
@@ -7,6 +7,10 @@ import {
   CardContent,
   Typography,
   useTheme,
+  IconButton,
+  Tooltip,
+  CircularProgress,
+  alpha,
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import {
@@ -14,6 +18,7 @@ import {
   TrendingDown,
   AccountBalance,
   ReceiptLong,
+  Refresh,
 } from '@mui/icons-material';
 import type { Transaction, TransactionFilters } from '../types';
 import FiltersCard from '../components/FiltersCard';
@@ -22,7 +27,7 @@ import TransactionForm from '../components/TransactionForm';
 import PageHeader from '../components/PageHeader';
 
 import { MetricCardSkeleton } from '../components/LoadingSkeleton';
-import { showSuccess, showErrorWithRetry, showConfirm, showWarning } from '../utils/notifications';
+import { showSuccess, showErrorWithRetry, showConfirm, showWarning, showToast } from '../utils/notifications';
 import { hoverLift, createStaggerDelay } from '../utils/animations';
 import {
   useTransactions,
@@ -32,9 +37,11 @@ import {
   useDeleteTransaction,
   useUpdateInstallmentGroup,
   useDeleteManyTransactions,
+  useRefreshTransactions,
 } from '../hooks/api/useTransactions';
 import { useCategories } from '../hooks/api/useCategories';
 import { useDashboardPermissions } from '../hooks/api/useDashboardPermissions';
+import { useDebouncedFilters } from '../hooks/useDebounce';
 
 
 export default function TransactionsPage() {
@@ -54,18 +61,43 @@ export default function TransactionsPage() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
 
-  // Custom Hooks
-  const { data: transactions = [], isLoading } = useTransactions(filters, dashboardId);
-  const { data: stats, isLoading: statsLoading } = useTransactionStats(filters, dashboardId);
+  // Debounce filters for API calls (300ms delay)
+  const [debouncedFilters, isFiltersPending] = useDebouncedFilters(filters, 300);
+
+  // Custom Hooks - use debounced filters for API calls
+  const { data: transactions = [], isLoading, isFetching } = useTransactions(debouncedFilters, dashboardId);
+  const { data: stats, isLoading: statsLoading, isFetching: statsFetching } = useTransactionStats(debouncedFilters, dashboardId);
   const { data: categories = [] } = useCategories(dashboardId || '');
   const { canEdit } = useDashboardPermissions();
+  const { refresh: refreshAll } = useRefreshTransactions();
 
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransaction();
   const deleteTransaction = useDeleteTransaction();
   const updateInstallmentGroup = useUpdateInstallmentGroup();
   const deleteManyTransactions = useDeleteManyTransactions();
+
+  // Client-side filtering for instant search
+  const filteredTransactions = useMemo(() => {
+    if (!searchQuery.trim()) return transactions;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return transactions.filter((t) => 
+      t.description?.toLowerCase().includes(query) ||
+      t.category?.toLowerCase().includes(query) ||
+      t.notes?.toLowerCase().includes(query) ||
+      t.institution?.toLowerCase().includes(query) ||
+      t.thirdPartyName?.toLowerCase().includes(query)
+    );
+  }, [transactions, searchQuery]);
+
+  // Handle manual refresh
+  const handleRefresh = useCallback(() => {
+    refreshAll();
+    showToast('Dados atualizados!', 'success');
+  }, [refreshAll]);
 
   const handleNewTransaction = () => {
     setSelectedTransaction(null);
@@ -106,7 +138,7 @@ export default function TransactionsPage() {
     try {
       if (selectedTransaction) {
         // Check if this is an installment transaction with group and scope is not 'single'
-        const groupId = (selectedTransaction as any).installmentGroupId;
+        const groupId = selectedTransaction.installmentGroupId;
         if (groupId && scope && scope !== 'single' && dashboardId) {
           await updateInstallmentGroup.mutateAsync({
             groupId,
@@ -171,9 +203,13 @@ export default function TransactionsPage() {
   };
 
   const handleExport = useCallback((selectedIds?: string[]) => {
-    const transactionsToExport = selectedIds && selectedIds.length > 0
-      ? transactions.filter(t => selectedIds.includes(t.id))
-      : transactions;
+    // Require selection - if no transactions selected, show warning
+    if (!selectedIds || selectedIds.length === 0) {
+      showWarning('Selecione as transações que deseja exportar usando os checkboxes.', { title: 'Nenhuma seleção' });
+      return;
+    }
+
+    const transactionsToExport = filteredTransactions.filter(t => selectedIds.includes(t.id));
 
     if (!transactionsToExport.length) {
       showWarning('Não há transações para exportar.', { title: 'Sem dados' });
@@ -205,21 +241,20 @@ export default function TransactionsPage() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const suffix = selectedIds && selectedIds.length > 0 ? `_${selectedIds.length}_selecionadas` : '';
-    link.download = `transacoes${suffix}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `transacoes_${selectedIds.length}_selecionadas_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    const msg = selectedIds && selectedIds.length > 0
-      ? `${selectedIds.length} transações exportadas com sucesso.`
-      : 'Arquivo CSV baixado com sucesso.';
-    showSuccess(msg, { title: 'Exportado!' });
-  }, [transactions]);
+    showSuccess(`${selectedIds.length} transações exportadas com sucesso.`, { title: 'Exportado!' });
+  }, [filteredTransactions]);
 
   const formatCurrency = (value: number) =>
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+  // Check if data is being updated
+  const isUpdating = isFetching || statsFetching || isFiltersPending;
 
   // Metrics configuration
   const metrics = [
@@ -270,7 +305,55 @@ export default function TransactionsPage() {
         ]}
         actionLabel={canEdit ? "Nova Transação" : undefined}
         onAction={canEdit ? handleNewTransaction : undefined}
+        extra={
+          <Tooltip title="Atualizar dados" arrow>
+            <IconButton
+              onClick={handleRefresh}
+              disabled={isUpdating}
+              sx={{
+                ml: 1,
+                bgcolor: alpha(theme.palette.primary.main, 0.1),
+                '&:hover': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.2),
+                },
+              }}
+            >
+              {isUpdating ? (
+                <CircularProgress size={20} color="primary" />
+              ) : (
+                <Refresh />
+              )}
+            </IconButton>
+          </Tooltip>
+        }
       />
+
+      {/* Update indicator */}
+      {isUpdating && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 3,
+            zIndex: 9999,
+          }}
+        >
+          <Box
+            sx={{
+              height: '100%',
+              bgcolor: 'primary.main',
+              animation: 'loading 1s ease-in-out infinite',
+              '@keyframes loading': {
+                '0%': { width: '0%', marginLeft: '0%' },
+                '50%': { width: '50%', marginLeft: '25%' },
+                '100%': { width: '0%', marginLeft: '100%' },
+              },
+            }}
+          />
+        </Box>
+      )}
 
       {/* Metrics Cards */}
       {statsLoading ? (
@@ -286,6 +369,8 @@ export default function TransactionsPage() {
                   borderLeft: 3,
                   borderColor: metric.color,
                   ...hoverLift,
+                  opacity: isUpdating ? 0.7 : 1,
+                  transition: 'all 0.3s ease',
                   animation: `slideInUp 400ms cubic-bezier(0.4, 0, 0.2, 1) ${createStaggerDelay(index, 100)}ms both`,
                   '@keyframes slideInUp': {
                     from: {
@@ -364,7 +449,7 @@ export default function TransactionsPage() {
 
       {/* Transactions Table */}
       <TransactionsTable
-        transactions={transactions}
+        transactions={filteredTransactions}
         isLoading={isLoading}
         onEdit={handleEditTransaction}
         onDelete={handleDeleteTransaction}
@@ -375,6 +460,8 @@ export default function TransactionsPage() {
         selectedIds={selectedTransactionIds}
         onSelectionChange={setSelectedTransactionIds}
         onDeleteSelected={handleDeleteSelected}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
 
       {/* Transaction Form Modal */}

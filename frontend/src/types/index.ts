@@ -23,6 +23,7 @@ export interface Transaction {
   installmentTotal: number;
   installmentNumber: number;
   installmentStatus: 'N/A' | 'Paga' | 'Pendente';
+  installmentGroupId?: string; // ID do grupo de parcelas
   notes?: string;
   isTemporary: boolean;
   isThirdParty?: boolean;

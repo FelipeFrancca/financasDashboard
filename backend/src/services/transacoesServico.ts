@@ -160,20 +160,31 @@ export async function updateTransaction(id: string, data: any, dashboardId: stri
   await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
   try {
-    // Extract items from data
-    const { items, ...updateData } = data;
+    // Extract items and non-updatable fields from data
+    const {
+      items,
+      dashboardId: _dashboardId, // Remove dashboardId from update data
+      userId: _userId,           // Remove userId from update data
+      id: _id,                   // Remove id from update data
+      createdAt: _createdAt,     // Remove createdAt from update data
+      updatedAt: _updatedAt,     // Remove updatedAt from update data
+      ...updateData
+    } = data;
 
-    if (data.date) {
-      updateData.date = new Date(data.date);
+    // Convert date string to Date object if provided
+    if (updateData.date) {
+      updateData.date = new Date(updateData.date);
     }
 
     // Update transaction and handle items in a transaction
     return await prisma.$transaction(async (tx) => {
       // Update the transaction itself
-      await tx.transaction.updateMany({
+      const updateResult = await tx.transaction.updateMany({
         where: { id, dashboardId, deletedAt: null },
         data: updateData,
       });
+
+      console.log(`[TransactionService] Updated ${updateResult.count} transaction(s) with id: ${id}`);
 
       // If items are provided, replace all existing items
       if (items !== undefined) {
@@ -202,6 +213,7 @@ export async function updateTransaction(id: string, data: any, dashboardId: stri
       });
     });
   } catch (error) {
+    console.error('[TransactionService] Error updating transaction:', error);
     return null;
   }
 }
@@ -285,7 +297,7 @@ export async function updateInstallmentGroup(
   }
 
   // Extract items and installment-specific fields that shouldn't be synced
-  const { items, date, installmentNumber, installmentStatus, ...syncData } = data;
+  const { items, date, installmentNumber, installmentStatus, dashboardId: _dashboardId, userId: _userId, id: _id, ...syncData } = data;
 
   // Fields that should be synced across all installments
   const updateData: any = {};
@@ -293,6 +305,8 @@ export async function updateInstallmentGroup(
   // Sync these fields if provided
   if (syncData.description !== undefined) updateData.description = syncData.description;
   if (syncData.amount !== undefined) updateData.amount = syncData.amount;
+  if (syncData.entryType !== undefined) updateData.entryType = syncData.entryType;
+  if (syncData.flowType !== undefined) updateData.flowType = syncData.flowType;
   if (syncData.category !== undefined) updateData.category = syncData.category;
   if (syncData.subcategory !== undefined) updateData.subcategory = syncData.subcategory;
   if (syncData.paymentMethod !== undefined) updateData.paymentMethod = syncData.paymentMethod;
@@ -303,11 +317,15 @@ export async function updateInstallmentGroup(
   if (syncData.thirdPartyName !== undefined) updateData.thirdPartyName = syncData.thirdPartyName;
   if (syncData.thirdPartyDescription !== undefined) updateData.thirdPartyDescription = syncData.thirdPartyDescription;
 
+  console.log(`[TransactionService] Updating installment group ${groupId} with scope ${scope}:`, updateData);
+
   // Update all matching transactions
   const result = await prisma.transaction.updateMany({
     where,
     data: updateData,
   });
+
+  console.log(`[TransactionService] Updated ${result.count} installment(s) in group ${groupId}`);
 
   // Fetch updated transactions
   const transactions = await prisma.transaction.findMany({

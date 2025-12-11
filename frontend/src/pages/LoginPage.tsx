@@ -26,7 +26,6 @@ import {
   Visibility,
   VisibilityOff,
   Google as GoogleIcon,
-  Warning as WarningIcon,
 } from "@mui/icons-material";
 import { useAuth } from "../contexts/AuthContext";
 import { showWarning, showErrorWithRetry, showConfirm } from "../utils/notifications";
@@ -47,24 +46,7 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
-// Helper to manage failed login attempts in sessionStorage
-const FAILED_ATTEMPTS_KEY = "loginFailedAttempts";
 
-const getFailedAttempts = (): number => {
-  const attempts = sessionStorage.getItem(FAILED_ATTEMPTS_KEY);
-  return attempts ? parseInt(attempts, 10) : 0;
-};
-
-const incrementFailedAttempts = (): number => {
-  const current = getFailedAttempts();
-  const newCount = current + 1;
-  sessionStorage.setItem(FAILED_ATTEMPTS_KEY, newCount.toString());
-  return newCount;
-};
-
-const resetFailedAttempts = (): void => {
-  sessionStorage.removeItem(FAILED_ATTEMPTS_KEY);
-};
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -77,7 +59,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState<{ message: string; code?: string } | null>(null);
-  const [failedAttempts, setFailedAttempts] = useState(getFailedAttempts());
+
 
   // Forgot Password State
   const [isForgotPassword, setIsForgotPassword] = useState(false);
@@ -271,14 +253,8 @@ export default function LoginPage() {
 
     try {
       await login(data.email, data.password, data.rememberMe);
-      // Login successful - reset failed attempts
-      resetFailedAttempts();
-      setFailedAttempts(0);
       navigate(from, { replace: true });
     } catch (err: any) {
-      // Increment failed attempts
-      const attempts = incrementFailedAttempts();
-      setFailedAttempts(attempts);
 
       // Display specific error based on error code
       const errorCode = err.code;
@@ -397,28 +373,7 @@ export default function LoginPage() {
                 </Alert>
               </Collapse>
 
-              {/* Failed Attempts Warning */}
-              <Collapse in={failedAttempts >= 3 && !isForgotPassword}>
-                <Alert
-                  severity="info"
-                  icon={<WarningIcon />}
-                  sx={{ mb: 2 }}
-                >
-                  <AlertTitle>Muitas tentativas falhadas</AlertTitle>
-                  Você tentou fazer login {failedAttempts} vezes sem sucesso.
-                  {" "}
-                  <Link
-                    component="button"
-                    type="button"
-                    variant="body2"
-                    onClick={toggleForgotPassword}
-                    sx={{ fontWeight: "bold", textDecoration: "underline" }}
-                  >
-                    Considere redefinir sua senha
-                  </Link>
-                  {" "}caso tenha esquecido.
-                </Alert>
-              </Collapse>
+
 
               {/* Login Form */}
               <Collapse in={!isForgotPassword}>

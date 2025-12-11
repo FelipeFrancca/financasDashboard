@@ -22,18 +22,31 @@ import {
   FormControl,
 } from '@mui/material';
 import Person from '@mui/icons-material/Person';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import CreditCardIcon from '@mui/icons-material/CreditCard';
 import { useForm, Controller } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
 import { useCategories, useCreateCategory } from '../hooks/api/useCategories';
+import { useAccounts, useCreateAccount } from '../hooks/api/useAccounts';
 import TransactionItemsEditor from './TransactionItemsEditor';
-import type { Transaction, TransactionItem } from '../types';
+import type { Transaction, TransactionItem, Account } from '../types';
 
 // Filter options for Autocomplete with create option
-const filter = createFilterOptions<CategoryOption>();
+const filterCategory = createFilterOptions<CategoryOption>();
+const filterAccount = createFilterOptions<AccountOption>();
 
 interface CategoryOption {
   name: string;
   id?: string;
+  inputValue?: string;
+  isNew?: boolean;
+}
+
+interface AccountOption {
+  name: string;
+  id?: string;
+  type?: Account['type'];
+  institution?: string;
   inputValue?: string;
   isNew?: boolean;
 }
@@ -92,6 +105,7 @@ interface TransactionFormData {
   isThirdParty: boolean;
   thirdPartyName: string;
   thirdPartyDescription: string;
+  accountId: string;
 }
 
 const defaultValues: TransactionFormData = {
@@ -113,12 +127,25 @@ const defaultValues: TransactionFormData = {
   isThirdParty: false,
   thirdPartyName: '',
   thirdPartyDescription: '',
+  accountId: '',
+};
+
+// Account type labels
+const accountTypeLabels: Record<Account['type'], string> = {
+  CHECKING: 'Conta Corrente',
+  SAVINGS: 'Poupança',
+  CREDIT_CARD: 'Cartão de Crédito',
+  INVESTMENT: 'Investimento',
+  CASH: 'Dinheiro',
+  OTHER: 'Outro',
 };
 
 export default function TransactionForm({ open, transaction, onClose, onSave }: TransactionFormProps) {
   const { dashboardId } = useParams<{ dashboardId: string }>();
   const { data: categories = [] } = useCategories(dashboardId || '');
+  const { data: accounts = [] } = useAccounts(dashboardId || '');
   const createCategory = useCreateCategory();
+  const createAccount = useCreateAccount();
 
   const { control, handleSubmit, reset, watch, setValue } = useForm<TransactionFormData>({
     defaultValues
@@ -126,10 +153,12 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
 
   const entryType = watch('entryType');
   const isThirdParty = watch('isThirdParty');
+  const paymentMethod = watch('paymentMethod');
   
   // State for editable items
   const [editableItems, setEditableItems] = useState<TransactionItem[]>([]);
   const [creatingCategory, setCreatingCategory] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
   
   // State for installment scope dialog
   const [showInstallmentScopeDialog, setShowInstallmentScopeDialog] = useState(false);
@@ -139,7 +168,8 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
   // Check if this is an installment transaction with groupId
   const isInstallmentWithGroup = transaction && 
     transaction.installmentTotal > 1 && 
-    (transaction as any).installmentGroupId;
+    transaction.installmentGroupId;
+
 
   // Filter categories based on entry type and convert to CategoryOption format
   const categoryOptions: CategoryOption[] = categories
@@ -148,6 +178,14 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
       return type === entryType;
     })
     .map((cat: any) => ({ name: cat.name, id: cat.id }));
+
+  // Convert accounts to AccountOption format
+  const accountOptions: AccountOption[] = (accounts as Account[]).map((acc) => ({
+    name: acc.name,
+    id: acc.id,
+    type: acc.type,
+    institution: acc.institution,
+  }));
 
   useEffect(() => {
     if (open) {
@@ -172,6 +210,7 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
           isThirdParty: transaction.isThirdParty || false,
           thirdPartyName: transaction.thirdPartyName || '',
           thirdPartyDescription: transaction.thirdPartyDescription || '',
+          accountId: transaction.accountId || '',
         });
         // Initialize editable items
         setEditableItems(transaction.items?.map(item => ({
@@ -203,6 +242,7 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
       installmentTotal: Number(data.installmentTotal),
       installmentNumber: Number(data.installmentNumber),
       items: editableItems.length > 0 ? editableItems : undefined,
+      accountId: data.accountId || undefined,
     });
     onClose();
   };
@@ -216,6 +256,7 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
       installmentTotal: Number(pendingFormData.installmentTotal),
       installmentNumber: Number(pendingFormData.installmentNumber),
       items: editableItems.length > 0 ? editableItems : undefined,
+      accountId: pendingFormData.accountId || undefined,
     }, installmentScope);
     
     setShowInstallmentScopeDialog(false);
@@ -427,7 +468,7 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
                       }
                     }}
                     filterOptions={(options, params) => {
-                      const filtered = filter(options, params);
+                      const filtered = filterCategory(options, params);
                       const { inputValue } = params;
                       
                       // Fuzzy matching - show options that contain any word from input
@@ -516,11 +557,136 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
             </Grid>
             <Grid item xs={12} sm={6}>
               <Controller
-                name="institution"
+                name="accountId"
                 control={control}
-                render={({ field }) => (
-                  <TextField {...field} fullWidth label="Instituição / Banco" />
-                )}
+                render={({ field }) => {
+                  const selectedAccount = accountOptions.find(a => a.id === field.value);
+                  
+                  return (
+                    <Autocomplete
+                      freeSolo
+                      selectOnFocus
+                      clearOnBlur
+                      handleHomeEndKeys
+                      loading={creatingAccount}
+                      options={accountOptions}
+                      getOptionLabel={(option) => {
+                        if (typeof option === 'string') return option;
+                        if (option.inputValue) return option.inputValue;
+                        return option.name;
+                      }}
+                      value={selectedAccount || null}
+                      onChange={async (_, newValue) => {
+                        if (typeof newValue === 'string') {
+                          // Just a string typed - ignore
+                        } else if (newValue?.isNew && newValue.inputValue) {
+                          // Create new account
+                          setCreatingAccount(true);
+                          try {
+                            // Determine default account type based on payment method
+                            let defaultType: Account['type'] = 'CHECKING';
+                            if (paymentMethod === 'Cartão de Crédito') {
+                              defaultType = 'CREDIT_CARD';
+                            } else if (paymentMethod === 'Dinheiro') {
+                              defaultType = 'CASH';
+                            }
+                            
+                            const newAccount = await createAccount.mutateAsync({
+                              data: {
+                                name: newValue.inputValue,
+                                type: defaultType,
+                                currency: 'BRL',
+                                initialBalance: 0,
+                              },
+                              dashboardId: dashboardId!,
+                            });
+                            field.onChange(newAccount.id);
+                            // Also update institution field with account name
+                            setValue('institution', newValue.inputValue);
+                          } catch {
+                            // Handle error silently
+                          } finally {
+                            setCreatingAccount(false);
+                          }
+                        } else if (newValue) {
+                          field.onChange(newValue.id);
+                          // Update institution field with account name/institution
+                          setValue('institution', newValue.institution || newValue.name);
+                        } else {
+                          field.onChange('');
+                          setValue('institution', '');
+                        }
+                      }}
+                      filterOptions={(options, params) => {
+                        const filtered = filterAccount(options, params);
+                        const { inputValue } = params;
+                        
+                        // Add "Create new" option if no exact match
+                        const isExisting = options.some(opt => 
+                          opt.name.toLowerCase() === inputValue.toLowerCase()
+                        );
+                        if (inputValue && !isExisting) {
+                          filtered.push({
+                            inputValue,
+                            name: `➕ Criar "${inputValue}"`,
+                            isNew: true,
+                          });
+                        }
+                        
+                        return filtered;
+                      }}
+                      renderOption={(props, option) => (
+                        <li {...props} key={option.isNew ? `new-${option.inputValue}` : option.id || option.name}>
+                          {option.isNew ? (
+                            <Typography color="primary">{option.name}</Typography>
+                          ) : (
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                              {option.type === 'CREDIT_CARD' ? (
+                                <CreditCardIcon fontSize="small" color="action" />
+                              ) : (
+                                <AccountBalanceIcon fontSize="small" color="action" />
+                              )}
+                              <Box sx={{ flex: 1 }}>
+                                <Typography variant="body2">{option.name}</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {option.type && accountTypeLabels[option.type]}
+                                  {option.institution && ` • ${option.institution}`}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          )}
+                        </li>
+                      )}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Conta / Cartão"
+                          placeholder="Selecione ou crie uma conta"
+                          helperText="Vincule a uma conta bancária ou cartão"
+                          InputProps={{
+                            ...params.InputProps,
+                            startAdornment: (
+                              <>
+                                {selectedAccount?.type === 'CREDIT_CARD' ? (
+                                  <CreditCardIcon fontSize="small" color="action" sx={{ ml: 1 }} />
+                                ) : selectedAccount ? (
+                                  <AccountBalanceIcon fontSize="small" color="action" sx={{ ml: 1 }} />
+                                ) : null}
+                                {params.InputProps.startAdornment}
+                              </>
+                            ),
+                            endAdornment: (
+                              <>
+                                {creatingAccount && <CircularProgress color="inherit" size={20} />}
+                                {params.InputProps.endAdornment}
+                              </>
+                            ),
+                          }}
+                        />
+                      )}
+                    />
+                  );
+                }}
               />
             </Grid>
 

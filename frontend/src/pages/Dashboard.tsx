@@ -148,8 +148,8 @@ export default function Dashboard({ mode, onToggleTheme }: DashboardProps) {
     try {
       if (selectedTransaction) {
         // Check if this is an installment transaction with group and scope is not 'single'
-        const groupId = (selectedTransaction as any).installmentGroupId;
-        const txDashboardId = (selectedTransaction as any).dashboardId;
+        const groupId = selectedTransaction.installmentGroupId;
+        const txDashboardId = selectedTransaction.dashboardId;
         if (groupId && scope && scope !== 'single' && txDashboardId) {
           const result = await transactionService.updateInstallmentGroup(groupId, data, txDashboardId, scope);
           showSuccess(`${result.count} parcelas atualizadas com sucesso.`, { title: 'Atualizado!', timer: 2000 });

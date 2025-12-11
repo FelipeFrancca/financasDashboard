@@ -11,6 +11,7 @@ interface PageHeaderProps {
     onAction?: () => void;
     actionIcon?: React.ReactNode;
     action?: React.ReactNode;
+    extra?: React.ReactNode; // Additional content next to the action button
 }
 
 export default function PageHeader({
@@ -20,7 +21,8 @@ export default function PageHeader({
     actionLabel,
     onAction,
     actionIcon = <AddIcon />,
-    action
+    action,
+    extra
 }: PageHeaderProps) {
     const theme = useTheme();
 
@@ -79,8 +81,9 @@ export default function PageHeader({
                     )}
                 </Box>
 
-                <Box sx={{ display: 'flex', gap: 2 }}>
+                <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                     {action}
+                    {extra}
                     {actionLabel && onAction && (
                         <Button
                             variant="contained"

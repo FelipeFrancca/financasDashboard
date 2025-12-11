@@ -5,6 +5,10 @@ import {
   useTheme,
   Typography,
   Button,
+  IconButton,
+  Tooltip,
+  CircularProgress,
+  alpha,
 } from '@mui/material';
 import { useParams } from 'react-router-dom';
 import type { Transaction, TransactionFilters } from '../types';
@@ -17,7 +21,8 @@ import QuickEntryForm from '../components/QuickEntryForm';
 import UnifiedImport from '../components/UnifiedImport';
 import PageHeader from '../components/PageHeader';
 import { DashboardSkeleton } from '../components/Skeletons';
-import { showSuccess, showErrorWithRetry, showConfirm, showWarning } from '../utils/notifications';
+import { showSuccess, showErrorWithRetry, showConfirm, showWarning, showToast } from '../utils/notifications';
+import { Refresh } from '@mui/icons-material';
 import {
   useTransactions,
   useTransactionStats,
@@ -27,7 +32,9 @@ import {
   useCreateManyTransactions,
   useUpdateInstallmentGroup,
   useDeleteManyTransactions,
+  useRefreshTransactions,
 } from '../hooks/api/useTransactions';
+import { useDebouncedFilters } from '../hooks/useDebounce';
 
 export default function DashboardFinancial() {
   const { dashboardId } = useParams<{ dashboardId: string }>();
@@ -49,9 +56,13 @@ export default function DashboardFinancial() {
   const [showTransactionForm, setShowTransactionForm] = useState(false);
   const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<string>>(new Set());
 
-  // Custom Hooks
-  const { data: transactions = [], refetch, isLoading, error } = useTransactions(filters, dashboardId);
-  const { data: stats } = useTransactionStats(filters, dashboardId);
+  // Debounce filters for API calls (300ms delay)
+  const [debouncedFilters, isFiltersPending] = useDebouncedFilters(filters, 300);
+
+  // Custom Hooks - use debounced filters for API calls
+  const { data: transactions = [], refetch, isLoading, isFetching, error } = useTransactions(debouncedFilters, dashboardId);
+  const { data: stats, isFetching: statsFetching } = useTransactionStats(debouncedFilters, dashboardId);
+  const { refresh: refreshAll } = useRefreshTransactions();
 
   const createTransaction = useCreateTransaction();
   const updateTransaction = useUpdateTransaction();
@@ -59,6 +70,15 @@ export default function DashboardFinancial() {
   const createManyTransactions = useCreateManyTransactions();
   const updateInstallmentGroup = useUpdateInstallmentGroup();
   const deleteManyTransactions = useDeleteManyTransactions();
+
+  // Check if data is being updated
+  const isUpdating = isFetching || statsFetching || isFiltersPending;
+
+  // Handle manual refresh
+  const handleRefresh = useCallback(() => {
+    refreshAll();
+    showToast('Dados atualizados!', 'success');
+  }, [refreshAll]);
 
   const handleNewTransaction = () => {
     setSelectedTransaction(null);
@@ -133,7 +153,7 @@ export default function DashboardFinancial() {
 
       if (selectedTransaction) {
         // Check if this is an installment transaction with group and scope is not 'single'
-        const groupId = (selectedTransaction as any).installmentGroupId;
+        const groupId = selectedTransaction.installmentGroupId;
         if (groupId && scope && scope !== 'single' && dashboardId) {
           await updateInstallmentGroup.mutateAsync({
             groupId,
@@ -176,9 +196,13 @@ export default function DashboardFinancial() {
   };
 
   const handleExport = useCallback((selectedIds?: string[]) => {
-    const transactionsToExport = selectedIds && selectedIds.length > 0
-      ? transactions.filter(t => selectedIds.includes(t.id))
-      : transactions;
+    // Require selection - if no transactions selected, show warning
+    if (!selectedIds || selectedIds.length === 0) {
+      showWarning('Selecione as transações que deseja exportar usando os checkboxes.', { title: 'Nenhuma seleção' });
+      return;
+    }
+
+    const transactionsToExport = transactions.filter(t => selectedIds.includes(t.id));
 
     if (!transactionsToExport.length) {
       showWarning('Não há transações para exportar.', { title: 'Sem dados' });
@@ -210,18 +234,54 @@ export default function DashboardFinancial() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    const suffix = selectedIds && selectedIds.length > 0 ? `_${selectedIds.length}_selecionadas` : '';
-    link.download = `financas${suffix}_${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `financas_${selectedIds.length}_selecionadas_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
 
-    const msg = selectedIds && selectedIds.length > 0
-      ? `${selectedIds.length} transações exportadas com sucesso.`
-      : 'Arquivo CSV baixado com sucesso.';
-    showSuccess(msg, { title: 'Exportado!' });
+    showSuccess(`${selectedIds.length} transações exportadas com sucesso.`, { title: 'Exportado!' });
   }, [transactions]);
+
+  // Export using backend API - CSV
+  const handleExportCSV = useCallback(async (selectedIds?: string[]) => {
+    if (!dashboardId) return;
+    
+    // Require selection
+    if (!selectedIds || selectedIds.length === 0) {
+      showWarning('Selecione as transações que deseja exportar usando os checkboxes.', { title: 'Nenhuma seleção' });
+      return;
+    }
+
+    try {
+      const { transactionService } = await import('../services/api');
+      await transactionService.exportCSV(dashboardId, filters, selectedIds);
+      showSuccess(`${selectedIds.length} transações exportadas para CSV.`, { title: 'Exportado!' });
+    } catch (error) {
+      showErrorWithRetry(error, () => handleExportCSV(selectedIds));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboardId, filters]);
+
+  // Export using backend API - XLSX
+  const handleExportXLSX = useCallback(async (selectedIds?: string[]) => {
+    if (!dashboardId) return;
+    
+    // Require selection
+    if (!selectedIds || selectedIds.length === 0) {
+      showWarning('Selecione as transações que deseja exportar usando os checkboxes.', { title: 'Nenhuma seleção' });
+      return;
+    }
+
+    try {
+      const { transactionService } = await import('../services/api');
+      await transactionService.exportXLSX(dashboardId, filters, selectedIds);
+      showSuccess(`${selectedIds.length} transações exportadas para Excel.`, { title: 'Exportado!' });
+    } catch (error) {
+      showErrorWithRetry(error, () => handleExportXLSX(selectedIds));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dashboardId, filters]);
 
   // Loading state
   if (isLoading) {
@@ -290,12 +350,59 @@ export default function DashboardFinancial() {
   // The individual components (charts, table) will handle their own empty states
   return (
     <Container maxWidth="xl" sx={{ py: 4 }}>
+      {/* Update indicator */}
+      {isUpdating && (
+        <Box
+          sx={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 3,
+            zIndex: 9999,
+          }}
+        >
+          <Box
+            sx={{
+              height: '100%',
+              bgcolor: 'primary.main',
+              animation: 'loading 1s ease-in-out infinite',
+              '@keyframes loading': {
+                '0%': { width: '0%', marginLeft: '0%' },
+                '50%': { width: '50%', marginLeft: '25%' },
+                '100%': { width: '0%', marginLeft: '100%' },
+              },
+            }}
+          />
+        </Box>
+      )}
+
       <PageHeader
         title="Visão Geral"
         breadcrumbs={[
           { label: 'Dashboards', to: '/dashboards' },
           { label: 'Financeiro' }
         ]}
+        extra={
+          <Tooltip title="Atualizar dados" arrow>
+            <IconButton
+              onClick={handleRefresh}
+              disabled={isUpdating}
+              sx={{
+                bgcolor: alpha(theme.palette.primary.main, 0.1),
+                '&:hover': {
+                  bgcolor: alpha(theme.palette.primary.main, 0.2),
+                },
+              }}
+            >
+              {isUpdating ? (
+                <CircularProgress size={20} color="primary" />
+              ) : (
+                <Refresh />
+              )}
+            </IconButton>
+          </Tooltip>
+        }
       />
 
       {/* Import e Entrada Rápida */}
@@ -323,6 +430,8 @@ export default function DashboardFinancial() {
         onDelete={handleDeleteTransaction}
         onNew={handleNewTransaction}
         onExport={handleExport}
+        onExportCSV={handleExportCSV}
+        onExportXLSX={handleExportXLSX}
         onThirdPartyUpdate={handleThirdPartyUpdate}
         selectedIds={selectedTransactionIds}
         onSelectionChange={setSelectedTransactionIds}
