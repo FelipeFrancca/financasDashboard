@@ -49,6 +49,7 @@ export interface TransactionFilters {
   dashboardId?: string;
   ownership?: 'all' | 'client' | 'thirdParty';
   accountId?: string;
+  onlyInstallments?: boolean;
 }
 
 export interface StatsSummary {

@@ -16,6 +16,8 @@ import {
   IconButton,
   ToggleButtonGroup,
   ToggleButton,
+  Switch,
+  FormControlLabel,
 } from '@mui/material';
 import {
   FilterList,
@@ -69,7 +71,7 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
     setSelectedYear(derivedYear);
   }, [derivedMonth, derivedYear]);
 
-  const handleChange = useCallback((field: keyof TransactionFilters, value: string) => {
+  const handleChange = useCallback((field: keyof TransactionFilters, value: any) => {
     onFiltersChange({ ...filters, [field]: value });
   }, [filters, onFiltersChange]);
 
@@ -401,6 +403,18 @@ export default function FiltersCard({ filters, onFiltersChange, transactions, ac
               <MenuItem value="client">Minhas</MenuItem>
               <MenuItem value="thirdParty">Terceiros</MenuItem>
             </TextField>
+          </Grid>
+          <Grid item xs={12} sm={6} md={4} sx={{ display: 'flex', alignItems: 'center' }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={!!filters.onlyInstallments}
+                  onChange={(e) => handleChange('onlyInstallments', e.target.checked)}
+                  color="primary"
+                />
+              }
+              label="Apenas Parceladas"
+            />
           </Grid>
 
         </Grid>

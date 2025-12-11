@@ -80,6 +80,7 @@ interface TransactionsTableProps {
   onDeleteSelected?: () => void;
   searchQuery?: string;
   onSearchChange?: (query: string) => void;
+  accounts?: Account[];
 }
 
 type Order = 'asc' | 'desc';

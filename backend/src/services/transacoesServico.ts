@@ -13,6 +13,7 @@ export type TransactionFilters = {
   search?: string;
   minAmount?: string;
   ownership?: 'all' | 'client' | 'thirdParty';
+  onlyInstallments?: boolean | string; // Novo filtro
 };
 
 export type TransactionCreateInput = Omit<Transaction, "id" | "createdAt" | "updatedAt">;
@@ -53,6 +54,15 @@ export async function getAllTransactions(filters: TransactionFilters = {}, dashb
   }
   if (filters.minAmount) {
     where.amount = { gte: parseFloat(filters.minAmount) };
+  }
+  if (filters.accountId) {
+    where.accountId = filters.accountId;
+  }
+
+  // Installments filter
+  const onlyInstallments = filters.onlyInstallments === 'true' || filters.onlyInstallments === true;
+  if (onlyInstallments) {
+    where.installmentTotal = { gt: 1 };
   }
 
   // Ownership filter

@@ -20,7 +20,7 @@ import {
   ReceiptLong,
   Refresh,
 } from '@mui/icons-material';
-import type { Transaction, TransactionFilters } from '../types';
+import type { Transaction, TransactionFilters, Account } from '../types';
 import FiltersCard from '../components/FiltersCard';
 import TransactionsTable from '../components/TransactionsTable';
 import TransactionForm from '../components/TransactionForm';
@@ -40,6 +40,7 @@ import {
   useRefreshTransactions,
 } from '../hooks/api/useTransactions';
 import { useCategories } from '../hooks/api/useCategories';
+import { useAccounts } from '../hooks/api/useAccounts';
 import { useDashboardPermissions } from '../hooks/api/useDashboardPermissions';
 import { useDebouncedFilters } from '../hooks/useDebounce';
 
@@ -70,6 +71,7 @@ export default function TransactionsPage() {
   const { data: transactions = [], isLoading, isFetching } = useTransactions(debouncedFilters, dashboardId);
   const { data: stats, isLoading: statsLoading, isFetching: statsFetching } = useTransactionStats(debouncedFilters, dashboardId);
   const { data: categories = [] } = useCategories(dashboardId || '');
+  const { data: accounts = [] } = useAccounts(dashboardId || '');
   const { canEdit } = useDashboardPermissions();
   const { refresh: refreshAll } = useRefreshTransactions();
 
@@ -444,6 +446,7 @@ export default function TransactionsPage() {
           onFiltersChange={setFilters}
           transactions={transactions}
           categories={categories}
+          accounts={accounts as Account[]}
         />
       </Box>
 
@@ -451,6 +454,7 @@ export default function TransactionsPage() {
       <TransactionsTable
         transactions={filteredTransactions}
         isLoading={isLoading}
+        accounts={accounts as Account[]}
         onEdit={handleEditTransaction}
         onDelete={handleDeleteTransaction}
         onNew={handleNewTransaction}
