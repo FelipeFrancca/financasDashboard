@@ -27,6 +27,8 @@ class DatabaseConnection {
                         { emit: 'event', level: 'warn' },
                     ]
                     : [{ emit: 'event', level: 'error' }],
+                // Previne conexão automática durante import - lazy connection
+                datasourceUrl: process.env.DATABASE_URL,
             });
 
             // Log queries in development

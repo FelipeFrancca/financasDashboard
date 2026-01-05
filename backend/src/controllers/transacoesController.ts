@@ -17,6 +17,15 @@ export const criarTransacoesEmLote = async (req: AuthRequest, res: Response) => 
     if (!dashboardId) {
         return res.status(400).json({ success: false, error: 'dashboardId é obrigatório' });
     }
+    if (!transactions || !Array.isArray(transactions) || transactions.length === 0) {
+        return res.status(400).json({ success: false, error: 'Array de transações é obrigatório e não pode estar vazio' });
+    }
+    if (transactions.length > 500) {
+        return res.status(400).json({
+            success: false,
+            error: `Máximo de 500 transações por lote. Recebido: ${transactions.length}`
+        });
+    }
     const transacoes = await transacoesServico.createManyTransactions(transactions, dashboardId, req.user!.userId);
     res.status(201).json({ success: true, data: { count: transacoes.length, transactions: transacoes } });
 };

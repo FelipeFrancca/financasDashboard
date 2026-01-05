@@ -56,7 +56,7 @@ app.use(helmet({
 }));
 
 // CORS Configuration - Suporta múltiplas origens
-const corsOrigin = process.env.CORS_ORIGIN || process.env.CORS_ORIGINS;
+const corsOrigin = process.env.CORS_ORIGIN || process.env.CORS_ORIGINS || '*';
 
 // Se CORS_ORIGIN for *, permite todas as origens
 if (corsOrigin === '*') {
@@ -202,12 +202,20 @@ if (!isProduction) {
 }
 app.use(errorHandler);
 
-// Start Server
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   logger.info(`🚀 Server running on http://localhost:${PORT}`, 'Server');
   logger.info(`📚 API Documentation: http://localhost:${PORT}/api-docs`, 'Server');
   logger.info(`🏥 Health check: http://localhost:${PORT}/health`, 'Server');
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`, 'Server');
+  console.log('✅ Servidor iniciado com sucesso!');
 });
+
+server.on('error', (error: any) => {
+  logger.error('Erro ao iniciar servidor HTTP', error, 'Server');
+  console.error(`❌ Erro fatal ao iniciar servidor na porta ${PORT}:`, error);
+  process.exit(1);
+});
+
+console.log(`⏳ Tentando iniciar servidor na porta ${PORT} (NODE_ENV=${process.env.NODE_ENV})...`);
 
 export default app;

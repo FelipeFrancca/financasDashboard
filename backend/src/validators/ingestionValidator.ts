@@ -37,6 +37,7 @@ export const statementInfoSchema = z.object({
     cardLastDigits: z.string().nullable().optional(),
     dueDate: z.string().nullable().optional(),
     totalAmount: z.number().nullable().optional(),
+    creditLimit: z.number().nullable().optional(),
     periodStart: z.string().nullable().optional(),
     periodEnd: z.string().nullable().optional(),
     holderName: z.string().nullable().optional(),
