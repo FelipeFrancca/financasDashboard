@@ -1,75 +1,86 @@
 ﻿# =============================================================================
-# Multi-stage Dockerfile para Finanças 360°
-# Backend: Bun + Express + TypeScript + Prisma
-# Frontend: React + TypeScript + Vite
+# Multi-stage Dockerfile para Finanças 360° - Node.js Edition
+# Backend: Node 20 + Express + TypeScript + Prisma
+# Frontend: Node 20 + React + TypeScript + Vite
 # =============================================================================
 
 # =============================================================================
 # Stage 1: Build Frontend
 # =============================================================================
-FROM oven/bun:1-alpine AS frontend-builder
+FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app/frontend
 
-COPY frontend/package.json frontend/bun.lock* ./
+COPY frontend/package.json frontend/package-lock.json* ./
 
-RUN bun install --frozen-lockfile
+# Instala dependências (se tiver package-lock usa ci, senão install)
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 COPY frontend/ ./
 
-# Define VITE_API_URL como vazio para usar URL relativa (mesma origem)
 ENV VITE_API_URL=""
 
-RUN bun run build
+RUN npm run build
 
 # =============================================================================
 # Stage 2: Build Backend
 # =============================================================================
-FROM oven/bun:1-alpine AS backend-builder
+FROM node:20-alpine AS backend-builder
 
 WORKDIR /app/backend
 
-COPY backend/package.json backend/bun.lock* ./
+COPY backend/package.json backend/package-lock.json* ./
 
-RUN bun install --frozen-lockfile
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 COPY backend/ ./
 
-RUN bunx prisma generate
+# Gerar Prisma Client
+RUN npx prisma generate
+
+# Instalar TypeScript global e rodar build com a config criada
+RUN npm install -g typescript
+COPY backend/tsconfig.build.json ./
+RUN tsc -p tsconfig.build.json
 
 # =============================================================================
 # Stage 3: Production Runtime
 # =============================================================================
-FROM oven/bun:1-alpine AS production
+FROM node:20-alpine AS production
 
 RUN apk add --no-cache openssl
 
 WORKDIR /app
 
+# Copiar apenas package.json de produção
 COPY --from=backend-builder /app/backend/package.json ./backend/
-COPY --from=backend-builder /app/backend/bun.lock* ./backend/
 
 WORKDIR /app/backend
 
-RUN bun install --production --frozen-lockfile
+# Instalar apenas dependências de produção
+RUN npm install --production
 
-COPY --from=backend-builder /app/backend/src ./src
+# Copiar arquivos construídos do Backend
+COPY --from=backend-builder /app/backend/dist ./dist
 COPY --from=backend-builder /app/backend/prisma ./prisma
 COPY --from=backend-builder /app/backend/node_modules/.prisma ./node_modules/.prisma
 
+# Copiar arquivos estáticos do Frontend
 COPY --from=frontend-builder /app/frontend/dist ./public
 
+# Criar pasta de uploads
 RUN mkdir -p ./uploads
 
-RUN printf '#!/bin/sh\nset -e\n\nif [ -z "$DATABASE_URL" ]; then\n  echo "ERROR: DATABASE_URL não definida"\n  exit 1\nfi\n\necho "Aplicando migrations..."\nbunx prisma migrate deploy\n\necho "Iniciando servidor..."\nexec bun src/index.ts\n' > /app/backend/start.sh && chmod +x /app/backend/start.sh
+# Script de inicialização ajustado para Node
+RUN printf '#!/bin/sh\nset -e\n\nif [ -z "$DATABASE_URL" ]; then\n  echo "ERROR: DATABASE_URL não definida"\n  exit 1\nfi\n\necho "Aplicando migrations..."\nnpx prisma migrate deploy\n\necho "Iniciando servidor..."\nexec node dist/index.js\n' > /app/backend/start.sh && chmod +x /app/backend/start.sh
 
 EXPOSE 5000
 
-# Não define CORS_ORIGIN aqui - deve vir do docker-compose/ambiente
-ENV NODE_ENV=production PORT=5000 JWT_EXPIRES_IN=7d JWT_REFRESH_EXPIRES_IN=30d
+ENV NODE_ENV=production PORT=5000
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD bun run -e "fetch('http://localhost:5000/health').then(r => r.status === 200 ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+# Healthcheck usando node
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 CMD node -e "fetch('http://localhost:5000/health').then(r => r.status === 200 ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
 
-USER bun
+USER node
 
 CMD ["/app/backend/start.sh"]

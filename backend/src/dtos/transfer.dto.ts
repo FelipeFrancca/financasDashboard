@@ -44,6 +44,8 @@ export const queryTransfersSchema = z.object({
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     accountId: z.string().cuid().optional(),
+    fromAccountId: z.string().cuid().optional(),
+    toAccountId: z.string().cuid().optional(),
     minAmount: z.coerce.number().optional(),
     maxAmount: z.coerce.number().optional(),
 

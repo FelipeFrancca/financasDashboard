@@ -474,6 +474,235 @@ class EmailServico {
       return false;
     }
   }
+
+  /**
+   * Envia resumo semanal financeiro
+   */
+  async enviarResumoSemanal(params: {
+    email: string;
+    nome: string;
+    semana: number;
+    totalGastos: number;
+    totalReceitas: number;
+    saldo: number;
+    resumo: string;
+  }): Promise<void> {
+    const { email, nome, semana, totalGastos, totalReceitas, saldo, resumo } = params;
+
+    const saldoColor = saldo >= 0 ? '#38ef7d' : '#ff4b2b';
+    const saldoSign = saldo >= 0 ? '+' : '';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 30px; text-align: center; border-radius: 12px 12px 0 0; }
+          .content { background: #f8f9fa; padding: 30px; border-radius: 0 0 12px 12px; border: 1px solid #e9ecef; border-top: none; }
+          .summary-card { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 25px; }
+          .stats { display: flex; justify-content: space-between; margin: 20px 0; gap: 10px; }
+          .stat { text-align: center; padding: 15px 10px; background: white; border-radius: 8px; flex: 1; border: 1px solid #eee; }
+          .stat-value { font-size: 18px; font-weight: bold; color: #333; }
+          .stat-label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 5px; }
+          .ai-summary { background: #e8f0fe; border-left: 4px solid #4285f4; padding: 15px; border-radius: 4px; color: #3c4043; font-size: 15px; margin-bottom: 25px; }
+          .footer { text-align: center; padding: 20px; color: #888; font-size: 12px; }
+          .btn { display: inline-block; padding: 12px 25px; background: #2a5298; color: white; text-decoration: none; border-radius: 6px; font-weight: 600; }
+          .btn:hover { background: #1e3c72; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin:0; font-size: 24px;">📊 Resumo Semanal</h1>
+            <p style="margin:5px 0 0; opacity: 0.8;">Semana ${semana}</p>
+          </div>
+          <div class="content">
+            <p>Olá, <strong>${nome}</strong>!</p>
+            
+            <p>Aqui está o resumo da sua vida financeira nesta semana:</p>
+
+            <div class="stats">
+              <div class="stat">
+                <div class="stat-value" style="color: #28a745;">R$ ${totalReceitas.toFixed(2)}</div>
+                <div class="stat-label">Receitas</div>
+              </div>
+              <div class="stat">
+                <div class="stat-value" style="color: #dc3545;">R$ ${totalGastos.toFixed(2)}</div>
+                <div class="stat-label">Despesas</div>
+              </div>
+              <div class="stat">
+                <div class="stat-value" style="color: ${saldoColor};">${saldoSign}R$ ${Math.abs(saldo).toFixed(2)}</div>
+                <div class="stat-label">Saldo</div>
+              </div>
+            </div>
+
+            <div class="summary-card">
+              <h3 style="margin-top:0; color:#444;">💡 Análise Inteligente</h3>
+              <div class="ai-summary" style="white-space: pre-wrap;">${resumo}</div>
+            </div>
+
+            <center>
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/analise" class="btn">
+                Ver Análise Completa
+              </a>
+            </center>
+          </div>
+          <div class="footer">
+            <p>Enviado automaticamente pelo Finanças Dashboard.</p>
+            <p><a href="#" style="color:#888;">Gerenciar notificações</a></p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await this.enviarEmail({
+      to: email,
+      subject: `📊 Resumo Financeiro - Semana ${semana}`,
+      html,
+      text: resumo,
+    });
+  }
+
+  /**
+   * Envia resumo mensal com insights
+   */
+  async enviarResumoMensal(params: {
+    email: string;
+    nome: string;
+    mes: string;
+    totalGastos: number;
+    totalReceitas: number;
+    saldo: number;
+    resumo: string;
+  }): Promise<void> {
+    const { email, nome, mes, totalGastos, totalReceitas, saldo, resumo } = params;
+    const saldoColor = saldo >= 0 ? '#38ef7d' : '#ff4b2b';
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <style>
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #8e2de2 0%, #4a00e0 100%); color: white; padding: 40px; text-align: center; border-radius: 12px 12px 0 0; }
+          .content { background: #fff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+          .big-stat { text-align: center; margin: 30px 0; padding: 20px; background: #f8f9fa; border-radius: 10px; }
+          .big-value { font-size: 36px; font-weight: 800; color: ${saldoColor}; margin-bottom: 5px; }
+          .big-label { font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+          .insight-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 20px; border-radius: 4px; margin-bottom: 30px; }
+          .btn { display: inline-block; padding: 15px 35px; background: #4a00e0; color: white; text-decoration: none; border-radius: 30px; font-weight: bold; box-shadow: 0 4px 15px rgba(74, 0, 224, 0.3); }
+          .metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; }
+          .metric { background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; }
+          .footer { text-align: center; padding: 30px; color: #999; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1 style="margin:0; font-size: 28px;">Relatório Mensal</h1>
+            <p style="margin:10px 0 0; opacity: 0.9;">${mes}</p>
+          </div>
+          <div class="content">
+            <p>Olá, <strong>${nome}</strong>!</p>
+            <p>O mês de ${mes} fechou. Veja como foi seu desempenho financeiro:</p>
+
+            <div class="big-stat">
+              <div class="big-value">R$ ${Math.abs(saldo).toFixed(2)}</div>
+              <div class="big-label">Saldo do Mês ${saldo >= 0 ? '(Positivo)' : '(Negativo)'}</div>
+            </div>
+
+            <div class="metrics">
+              <div class="metric">
+                <div style="font-weight:bold; color:#28a745;">R$ ${totalReceitas.toFixed(2)}</div>
+                <div style="font-size:12px; color:#666;">Receitas</div>
+              </div>
+              <div class="metric">
+                <div style="font-weight:bold; color:#dc3545;">R$ ${totalGastos.toFixed(2)}</div>
+                <div style="font-size:12px; color:#666;">Despesas</div>
+              </div>
+            </div>
+
+            <h3 style="margin-top:0;">🤖 Insights da IA</h3>
+            <div class="insight-box" style="white-space: pre-wrap;">${resumo}</div>
+
+            <div style="text-align: center;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/analise/mensal" class="btn">
+                Ver Relatório Completo
+              </a>
+            </div>
+          </div>
+          <div class="footer">
+            <p>Finanças Dashboard - Seu assistente financeiro inteligente.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await this.enviarEmail({
+      to: email,
+      subject: `📈 Relatório Mensal - ${mes}`,
+      html,
+      text: resumo,
+    });
+  }
+
+  /**
+   * Envia insight de gasto específico
+   */
+  async enviarInsightGasto(params: {
+    email: string;
+    nome: string;
+    titulo: string;
+    mensagem: string;
+    tipo: 'alerta' | 'dica' | 'conquista';
+  }): Promise<void> {
+    const { email, nome, titulo, mensagem, tipo } = params;
+
+    let color = '#4a00e0';
+    let icon = '💡';
+
+    if (tipo === 'alerta') { color = '#dc3545'; icon = '⚠️'; }
+    if (tipo === 'conquista') { color = '#28a745'; icon = '🏆'; }
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <body style="font-family: sans-serif; background: #f4f4f4; padding: 20px;">
+        <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+          <div style="background: ${color}; color: white; padding: 20px; text-align: center; font-size: 18px; font-weight: bold;">
+            ${icon} Novo Insight Financeiro
+          </div>
+          <div style="padding: 30px;">
+            <p>Olá, ${nome}!</p>
+            <h2 style="color: #333; margin-top: 0;">${titulo}</h2>
+            <p style="color: #555; background: #f9f9f9; padding: 15px; border-radius: 5px; border-left: 3px solid ${color};">
+              ${mensagem}
+            </p>
+            <center>
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}" style="display: inline-block; margin-top: 20px; padding: 10px 20px; background: #333; color: white; text-decoration: none; border-radius: 5px;">
+                Abra o App
+              </a>
+            </center>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    await this.enviarEmail({
+      to: email,
+      subject: `${icon} Insight: ${titulo}`,
+      html,
+      text: `${titulo}\n\n${mensagem}`,
+    });
+  }
 }
 
 export default new EmailServico();

@@ -197,18 +197,27 @@ class Logger {
      * Limpar logs antigos (mais de 7 dias)
      */
     async cleanOldLogs(daysToKeep: number = 7): Promise<void> {
-        const files = fs.readdirSync(this.logsDir);
-        const now = Date.now();
-        const maxAge = daysToKeep * 24 * 60 * 60 * 1000;
+        // Se não pode escrever em arquivo, não há logs para limpar
+        if (!this.canWriteToFile || !fs.existsSync(this.logsDir)) {
+            return;
+        }
 
-        for (const file of files) {
-            const filePath = path.join(this.logsDir, file);
-            const stats = fs.statSync(filePath);
+        try {
+            const files = fs.readdirSync(this.logsDir);
+            const now = Date.now();
+            const maxAge = daysToKeep * 24 * 60 * 60 * 1000;
 
-            if (now - stats.mtime.getTime() > maxAge) {
-                fs.unlinkSync(filePath);
-                this.info(`Log antigo removido: ${file}`, 'LogCleanup');
+            for (const file of files) {
+                const filePath = path.join(this.logsDir, file);
+                const stats = fs.statSync(filePath);
+
+                if (now - stats.mtime.getTime() > maxAge) {
+                    fs.unlinkSync(filePath);
+                    this.info(`Log antigo removido: ${file}`, 'LogCleanup');
+                }
             }
+        } catch (error) {
+            // Silently ignore errors in log cleanup to avoid spam
         }
     }
 }

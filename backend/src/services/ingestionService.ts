@@ -657,12 +657,30 @@ export class IngestionService {
 
     /**
      * Normaliza valor monetário para número
+     * Suporta formato brasileiro: R$ 1.234,56 -> 1234.56
      */
     private normalizeAmount(amount: any): number {
         if (typeof amount === 'number') return amount;
         if (amount === null || amount === undefined) return 0;
         if (typeof amount === 'string') {
-            const parsed = parseFloat(amount.replace(/[^\d.,]/g, '').replace(',', '.'));
+            // Remove símbolos de moeda, espaços e letras
+            let cleaned = amount.replace(/[^\d.,]/g, '');
+
+            // Detecta formato brasileiro (ponto como separador de milhar, vírgula como decimal)
+            // Padrão: 1.234,56 ou 1234,56
+            if (cleaned.includes(',') && cleaned.includes('.')) {
+                // Tem ambos: assume formato brasileiro (1.234,56)
+                cleaned = cleaned.replace(/\./g, '').replace(',', '.');
+            } else if (cleaned.includes(',')) {
+                // Só tem vírgula: pode ser 1234,56 ou 1,234.56 invertido
+                // Se vírgula está próxima do final com 2 dígitos, provavelmente é decimal brasileiro
+                if (/,\d{2}$/.test(cleaned)) {
+                    cleaned = cleaned.replace(',', '.');
+                }
+            }
+            // Se só tem ponto, parseFloat lida naturalmente
+
+            const parsed = parseFloat(cleaned);
             return isNaN(parsed) ? 0 : parsed;
         }
         return 0;

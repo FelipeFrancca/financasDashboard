@@ -21,6 +21,8 @@ import notificationPreferencesRotas from "./routes/notificationPreferencesRotas"
 import ingestionRotas from "./routes/ingestionRotas";
 import itemsRotas from "./routes/itemsRotas";
 import pushNotificationRotas from "./routes/pushNotificationRotas";
+import analysisRotas from "./routes/analysisRoutes";
+import { cronService } from "./services/cronServico";
 
 // Middlewares e Utils
 import { logger } from "./utils/logger";
@@ -132,6 +134,7 @@ app.use("/api/alerts", alertasRotas);
 app.use("/api/dashboards", itemsRotas); // Adicionando rota de itens (merge com paineisRotas)
 app.use("/api/notification-preferences", notificationPreferencesRotas);
 app.use("/api/push", pushNotificationRotas);
+app.use("/api/analysis", analysisRotas);
 
 // Health check
 app.get("/health", async (_req, res) => {
@@ -208,6 +211,10 @@ app.listen(PORT, () => {
   logger.info(`📚 API Documentation: http://localhost:${PORT}/api-docs`, 'Server');
   logger.info(`🏥 Health check: http://localhost:${PORT}/health`, 'Server');
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`, 'Server');
+
+  // Iniciar cron jobs
+  cronService.start();
+  logger.info(`⏰ Cron jobs initialized`, 'Server');
 });
 
 export default app;

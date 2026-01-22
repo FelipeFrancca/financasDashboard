@@ -48,6 +48,7 @@ import {
     TrendingUp,
     Person,
     HealthAndSafety,
+    AutoAwesome,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -116,6 +117,7 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                 divider: true,
                 children: [
                     { text: 'Visão Geral', icon: <TrendingUp />, path: `${basePath}` },
+                    { text: 'Análise Inteligente', icon: <AutoAwesome />, path: `${basePath}/analise` },
                     { text: 'Transações', icon: <Receipt />, path: `${basePath}/transactions` },
                     { text: 'Contas', icon: <AccountBalanceWallet />, path: `${basePath}/accounts` },
                     { text: 'Categorias', icon: <Category />, path: `${basePath}/categories` },

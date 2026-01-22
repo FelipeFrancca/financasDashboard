@@ -148,7 +148,8 @@ describe("authValidator - forgotPasswordSchema", () => {
 describe("authValidator - resetPasswordSchema", () => {
     test("deve validar reset correto", () => {
         const validData = {
-            token: "valid-token-123",
+            email: "test@example.com",
+            code: "1234",
             password: "NewPassword123",
         };
 
@@ -156,8 +157,30 @@ describe("authValidator - resetPasswordSchema", () => {
         expect(result.success).toBe(true);
     });
 
-    test("deve falhar sem token", () => {
+    test("deve falhar sem código", () => {
         const invalidData = {
+            email: "test@example.com",
+            password: "NewPassword123",
+        };
+
+        const result = resetPasswordSchema.safeParse(invalidData);
+        expect(result.success).toBe(false);
+    });
+
+    test("deve falhar com código inválido (não 4 dígitos)", () => {
+        const invalidData = {
+            email: "test@example.com",
+            code: "12",
+            password: "NewPassword123",
+        };
+
+        const result = resetPasswordSchema.safeParse(invalidData);
+        expect(result.success).toBe(false);
+    });
+
+    test("deve falhar sem email", () => {
+        const invalidData = {
+            code: "1234",
             password: "NewPassword123",
         };
 
@@ -167,7 +190,8 @@ describe("authValidator - resetPasswordSchema", () => {
 
     test("deve falhar com senha fraca", () => {
         const invalidData = {
-            token: "valid-token",
+            email: "test@example.com",
+            code: "1234",
             password: "weak",
         };
 

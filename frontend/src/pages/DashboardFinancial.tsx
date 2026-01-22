@@ -20,6 +20,7 @@ import TransactionForm from '../components/TransactionForm';
 import QuickEntryForm from '../components/QuickEntryForm';
 import UnifiedImport from '../components/UnifiedImport';
 import PageHeader from '../components/PageHeader';
+import { InsightsPanel } from '../components/InsightsPanel';
 import { DashboardSkeleton } from '../components/Skeletons';
 import { showSuccess, showErrorWithRetry, showConfirm, showWarning, showToast } from '../utils/notifications';
 import { Refresh } from '@mui/icons-material';
@@ -246,7 +247,7 @@ export default function DashboardFinancial() {
   // Export using backend API - CSV
   const handleExportCSV = useCallback(async (selectedIds?: string[]) => {
     if (!dashboardId) return;
-    
+
     // Require selection
     if (!selectedIds || selectedIds.length === 0) {
       showWarning('Selecione as transações que deseja exportar usando os checkboxes.', { title: 'Nenhuma seleção' });
@@ -260,13 +261,13 @@ export default function DashboardFinancial() {
     } catch (error) {
       showErrorWithRetry(error, () => handleExportCSV(selectedIds));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboardId, filters]);
 
   // Export using backend API - XLSX
   const handleExportXLSX = useCallback(async (selectedIds?: string[]) => {
     if (!dashboardId) return;
-    
+
     // Require selection
     if (!selectedIds || selectedIds.length === 0) {
       showWarning('Selecione as transações que deseja exportar usando os checkboxes.', { title: 'Nenhuma seleção' });
@@ -280,7 +281,7 @@ export default function DashboardFinancial() {
     } catch (error) {
       showErrorWithRetry(error, () => handleExportXLSX(selectedIds));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dashboardId, filters]);
 
   // Loading state
@@ -419,7 +420,13 @@ export default function DashboardFinancial() {
         <FiltersCard filters={filters} onFiltersChange={setFilters} transactions={transactions} />
       </Box>
 
-      {/* Gráficos */}
+      {/* Insights e Gráficos */}
+      {dashboardId && (
+        <Box sx={{ mb: 4 }}>
+          <InsightsPanel dashboardId={dashboardId} />
+        </Box>
+      )}
+
       <ChartsSection transactions={transactions} />
 
       {/* Tabela */}
