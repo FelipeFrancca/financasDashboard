@@ -37,10 +37,10 @@ export async function createTransfer(
         amount: dto.amount,
     });
 
-    // 1. Validar contas existem e pertencem ao usuário
+    // 1. Validar contas existem e pertencem ao usuário/dashboard
     const [fromAccount, toAccount] = await Promise.all([
-        accountService.getAccountById(dto.fromAccountId, userId),
-        accountService.getAccountById(dto.toAccountId, userId),
+        accountService.getAccountById(dto.fromAccountId, dto.dashboardId, userId),
+        accountService.getAccountById(dto.toAccountId, dto.dashboardId, userId),
     ]);
 
     // 2. Validar saldo suficiente na conta de origem
@@ -62,11 +62,12 @@ export async function createTransfer(
                     flowType: 'Variável',
                     category: 'Transferência',
                     subcategory: `Para: ${toAccount.name}`,
-                    description: dto.description,
+                    description: dto.description || `Transferência para ${toAccount.name}`,
                     amount: dto.amount,
                     accountId: dto.fromAccountId,
                     transferToAccountId: dto.toAccountId,
                     userId,
+                    dashboardId: dto.dashboardId,
                     notes: dto.notes,
                 },
             });
@@ -79,12 +80,13 @@ export async function createTransfer(
                     flowType: 'Variável',
                     category: 'Transferência',
                     subcategory: `De: ${fromAccount.name}`,
-                    description: dto.description,
+                    description: dto.description || `Transferência de ${fromAccount.name}`,
                     amount: dto.amount,
                     accountId: dto.toAccountId,
                     transferToAccountId: dto.fromAccountId,
                     linkedTransactionId: debitTransaction.id,
                     userId,
+                    dashboardId: dto.dashboardId,
                     notes: dto.notes,
                 },
             });
@@ -95,32 +97,14 @@ export async function createTransfer(
                 data: { linkedTransactionId: creditTransaction.id },
             });
 
-            // 3.4 Atualizar saldos das contas
-            await tx.account.update({
-                where: { id: dto.fromAccountId },
-                data: {
-                    currentBalance: { decrement: dto.amount },
-                    availableBalance: fromAccount.type === 'CREDIT_CARD'
-                        ? { decrement: dto.amount }
-                        : { decrement: dto.amount },
-                },
-            });
-
-            await tx.account.update({
-                where: { id: dto.toAccountId },
-                data: {
-                    currentBalance: { increment: dto.amount },
-                    availableBalance: toAccount.type === 'CREDIT_CARD'
-                        ? { increment: dto.amount }
-                        : { increment: dto.amount },
-                },
-            });
-
-            return {
-                debitTransaction,
-                creditTransaction,
-            };
+            return { debitTransaction, creditTransaction };
         });
+
+        // 3.4 Atualizar saldos das contas (fora da transaction para evitar deadlocks complexos)
+        await Promise.all([
+            accountService.recalculateBalance(dto.fromAccountId, dto.dashboardId, userId),
+            accountService.recalculateBalance(dto.toAccountId, dto.dashboardId, userId),
+        ]);
 
         logger.info('Transferência criada com sucesso', 'TransferService', {
             userId,
@@ -128,29 +112,19 @@ export async function createTransfer(
             creditId: result.creditTransaction.id,
         });
 
-        // Retornar resposta formatada
+        // Retornar resposta formatada com os dados retornados do banco
         return {
             id: result.debitTransaction.linkedTransactionId!,
             fromAccountId: dto.fromAccountId,
             toAccountId: dto.toAccountId,
+            fromAccountName: fromAccount.name,
+            toAccountName: toAccount.name,
             amount: dto.amount,
             date: dto.date,
             description: dto.description,
-            notes: dto.notes || null,
-            fromTransaction: {
-                id: result.debitTransaction.id,
-                accountId: result.debitTransaction.accountId!,
-                amount: result.debitTransaction.amount,
-                entryType: result.debitTransaction.entryType,
-            },
-            toTransaction: {
-                id: result.creditTransaction.id,
-                accountId: result.creditTransaction.accountId!,
-                amount: result.creditTransaction.amount,
-                entryType: result.creditTransaction.entryType,
-            },
-            createdAt: result.debitTransaction.createdAt,
+            linkedTransactionId: result.creditTransaction.id,
         };
+
     } catch (error) {
         logger.error('Erro ao criar transferência', error as Error, 'TransferService', {
             userId,
@@ -169,6 +143,7 @@ export async function getTransfers(
 ): Promise<{ data: Transaction[]; total: number }> {
     const where: any = {
         userId,
+        dashboardId: dto.dashboardId,
         deletedAt: null,
         category: 'Transferência',
         OR: [
@@ -187,6 +162,11 @@ export async function getTransfers(
         where.amount = {};
         if (dto.minAmount) where.amount.gte = dto.minAmount;
         if (dto.maxAmount) where.amount.lte = dto.maxAmount;
+    }
+
+    if (dto.accountId) {
+        where.OR = undefined; // Remove o OR anterior se accountId especifico for passado
+        where.accountId = dto.accountId;
     }
 
     const [transfers, total] = await prisma.$transaction([
@@ -210,12 +190,14 @@ export async function getTransfers(
  */
 export async function getTransferById(
     transferId: string,
+    dashboardId: string,
     userId: string
 ): Promise<TransferResponseDTO> {
     const transaction = await prisma.transaction.findFirst({
         where: {
             id: transferId,
             userId,
+            dashboardId,
             deletedAt: null,
             category: 'Transferência',
         },
@@ -241,23 +223,12 @@ export async function getTransferById(
         id: transaction.id,
         fromAccountId: debitTx.accountId!,
         toAccountId: creditTx.accountId!,
+        fromAccountName: debitTx.account?.name,
+        toAccountName: creditTx.account?.name,
         amount: transaction.amount,
         date: transaction.date,
         description: transaction.description,
-        notes: transaction.notes,
-        fromTransaction: {
-            id: debitTx.id,
-            accountId: debitTx.accountId!,
-            amount: debitTx.amount,
-            entryType: debitTx.entryType,
-        },
-        toTransaction: {
-            id: creditTx.id,
-            accountId: creditTx.accountId!,
-            amount: creditTx.amount,
-            entryType: creditTx.entryType,
-        },
-        createdAt: transaction.createdAt,
+        linkedTransactionId: creditTx.id,
     };
 }
 
@@ -267,44 +238,39 @@ export async function getTransferById(
  */
 export async function deleteTransfer(
     transferId: string,
+    dashboardId: string,
     userId: string
 ): Promise<void> {
     logger.info('Cancelando transferência', 'TransferService', { userId, transferId });
 
     // Buscar transferência
-    const transfer = await getTransferById(transferId, userId);
+    const transfer = await getTransferById(transferId, dashboardId, userId);
 
     // Deletar em transação DB
     await prisma.$transaction(async (tx) => {
-        // Soft delete das transações
+        // Soft delete das transações (baseada na debit e credit IDs do response)
+        // O response retorna ID da transação principal (debit) e linkedTransactionId (credit)
+        const idsToDelete = [transfer.id];
+        if (transfer.linkedTransactionId) idsToDelete.push(transfer.linkedTransactionId);
+
         await tx.transaction.updateMany({
             where: {
-                id: { in: [transfer.fromTransaction.id, transfer.toTransaction.id] },
+                id: { in: idsToDelete },
                 userId,
+                dashboardId,
             },
             data: {
                 deletedAt: new Date(),
                 deletedBy: userId,
             },
         });
-
-        // Reverter saldos
-        await tx.account.update({
-            where: { id: transfer.fromAccountId },
-            data: {
-                currentBalance: { increment: transfer.amount },
-                availableBalance: { increment: transfer.amount },
-            },
-        });
-
-        await tx.account.update({
-            where: { id: transfer.toAccountId },
-            data: {
-                currentBalance: { decrement: transfer.amount },
-                availableBalance: { decrement: transfer.amount },
-            },
-        });
     });
+
+    // Reverter saldos
+    await Promise.all([
+        accountService.recalculateBalance(transfer.fromAccountId, dashboardId, userId),
+        accountService.recalculateBalance(transfer.toAccountId, dashboardId, userId),
+    ]);
 
     logger.info('Transferência cancelada', 'TransferService', {
         userId,

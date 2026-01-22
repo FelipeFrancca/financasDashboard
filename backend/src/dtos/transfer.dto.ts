@@ -25,6 +25,7 @@ export const createTransferSchema = z.object({
 
     fromAccountId: z.string().cuid('Conta de origem inválida'),
     toAccountId: z.string().cuid('Conta de destino inválida'),
+    notes: z.string().optional(),
 }).passthrough().refine(
     (data) => data.fromAccountId !== data.toAccountId,
     {
@@ -34,6 +35,22 @@ export const createTransferSchema = z.object({
 );
 
 export type CreateTransferDTO = z.infer<typeof createTransferSchema>;
+
+// ============================================
+// RESPONSE DTO
+// ============================================
+
+export interface TransferResponseDTO {
+    id: string; // ID da transação de débito principal
+    amount: number;
+    date: Date;
+    description?: string;
+    fromAccountId: string;
+    toAccountId: string;
+    fromAccountName?: string;
+    toAccountName?: string;
+    linkedTransactionId?: string;
+}
 
 // ============================================
 // QUERY TRANSFERS DTO
