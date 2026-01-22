@@ -24,7 +24,12 @@ export async function createAlert(
     const alert = await prisma.alert.create({
         data: {
             ...data,
-            dashboardId,
+            dashboard: {
+                connect: { id: dashboardId },
+            },
+            user: {
+                connect: { id: userId },
+            },
         },
     });
 
@@ -147,9 +152,9 @@ export async function checkAutomaticAlerts(dashboardId: string, userId: string) 
     const { checkPermission } = await import('./paineisServico');
     await checkPermission(userId, dashboardId);
 
-    // Verificar Orçamentos
+    // Verificar Orçamentos - Budget is linked to userId, not dashboardId
     const budgets = await prisma.budget.findMany({
-        where: { dashboardId, isActive: true, deletedAt: null },
+        where: { userId, isActive: true, deletedAt: null },
     });
 
     // Lógica simplificada de verificação

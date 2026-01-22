@@ -3,7 +3,7 @@
  * Sistema de jobs automáticos para análise financeira
  */
 
-import cron from 'node-cron';
+import cron, { ScheduledTask } from 'node-cron';
 import { prisma } from '../database/conexao';
 import { logger } from '../utils/logger';
 import { financialAnalysisService } from './analysisServico';
@@ -17,7 +17,7 @@ interface CronJob {
     name: string;
     schedule: string;
     handler: () => Promise<void>;
-    task?: cron.ScheduledTask;
+    task?: ScheduledTask;
 }
 
 /**

@@ -27,15 +27,17 @@ export async function createGoal(
 
     // Remove dashboardId from dto
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { dashboardId: _, ...goalData } = dto;
+    const { dashboardId: _, userId: __, ...goalData } = dto as any;
 
     const goal = await prisma.financialGoal.create({
         data: {
             ...goalData,
-            userId,
             status: 'ACTIVE',
             isCompleted: dto.currentAmount >= dto.targetAmount,
             completedAt: dto.currentAmount >= dto.targetAmount ? new Date() : null,
+            user: {
+                connect: { id: userId },
+            },
         },
     });
 

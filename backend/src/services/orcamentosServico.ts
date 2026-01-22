@@ -31,12 +31,14 @@ export async function createBudget(
 
     // Remove dashboardId from dto as it's not in the model
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { dashboardId: _, ...budgetData } = dto;
+    const { dashboardId: _, userId: __, ...budgetData } = dto as any;
 
     const budget = await prisma.budget.create({
         data: {
             ...budgetData,
-            userId,
+            user: {
+                connect: { id: userId },
+            },
         },
     });
 

@@ -158,12 +158,13 @@ export const paginationSchema = z.object({
 /**
  * Helper para ordenação padrão
  */
-export function sortingSchema<T extends string>(
-    fields: readonly T[],
-    defaultField: T = fields[0]
+export function sortingSchema(
+    fields: readonly string[],
+    defaultField?: string
 ) {
+    const defaultValue = defaultField ?? fields[0];
     return z.object({
-        sortBy: z.enum(fields as [T, ...T[]]).default(defaultField),
+        sortBy: z.enum(fields as [string, ...string[]]).default(defaultValue),
         sortOrder: z.enum(['asc', 'desc']).default('desc'),
     });
 }

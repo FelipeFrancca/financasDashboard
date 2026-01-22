@@ -48,15 +48,23 @@ export async function createAccount(
         });
     }
 
+    // Remove userId and dashboardId from dto to avoid Prisma type conflicts
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { dashboardId: _, userId: __, ...accountData } = dto as any;
+
     const account = await prisma.account.create({
         data: {
-            ...dto,
+            ...accountData,
             currentBalance: dto.initialBalance,
             availableBalance: dto.type === AccountType.CREDIT_CARD
                 ? (dto.creditLimit || 0) - dto.initialBalance
                 : dto.initialBalance,
-            userId,
-            dashboardId,
+            user: {
+                connect: { id: userId },
+            },
+            dashboard: {
+                connect: { id: dashboardId },
+            },
         },
     });
 
