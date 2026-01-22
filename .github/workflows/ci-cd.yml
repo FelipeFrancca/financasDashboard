@@ -56,7 +56,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:admin@localhost:5432/finchart_test
 
       - name: Run API tests
-        run: bun test --ignore '**/ingestionService.test.ts'
+        run: bun test
         working-directory: ./backend
         env:
           DATABASE_URL: postgresql://postgres:admin@localhost:5432/finchart_test
