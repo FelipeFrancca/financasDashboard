@@ -29,9 +29,13 @@ export async function createBudget(
 
     logger.info('Criando orçamento', 'BudgetService', { dashboardId, name: dto.name });
 
+    // Remove dashboardId from dto as it's not in the model
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { dashboardId: _, ...budgetData } = dto;
+
     const budget = await prisma.budget.create({
         data: {
-            ...dto,
+            ...budgetData,
             userId,
         },
     });

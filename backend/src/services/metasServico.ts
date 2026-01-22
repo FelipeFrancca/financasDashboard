@@ -25,9 +25,13 @@ export async function createGoal(
     const { checkPermission } = await import('./paineisServico');
     await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
+    // Remove dashboardId from dto
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { dashboardId: _, ...goalData } = dto;
+
     const goal = await prisma.financialGoal.create({
         data: {
-            ...dto,
+            ...goalData,
             userId,
             status: 'ACTIVE',
             isCompleted: dto.currentAmount >= dto.targetAmount,
