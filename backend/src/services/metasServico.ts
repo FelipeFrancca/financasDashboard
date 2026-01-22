@@ -28,14 +28,14 @@ export async function createGoal(
     const goal = await prisma.financialGoal.create({
         data: {
             ...dto,
-            dashboardId,
+            userId,
             status: 'ACTIVE',
             isCompleted: dto.currentAmount >= dto.targetAmount,
             completedAt: dto.currentAmount >= dto.targetAmount ? new Date() : null,
         },
     });
 
-    logger.info('Meta criada', 'GoalService', { id: goal.id, dashboardId });
+    logger.info('Meta criada', 'GoalService', { id: goal.id, dashboardId }); // Keep dashboardId in log only
     return goal;
 }
 
@@ -48,7 +48,8 @@ export async function getGoals(
     await checkPermission(userId, dashboardId);
 
     const where: Prisma.FinancialGoalWhereInput = {
-        dashboardId,
+        userId,
+        // dashboardId removed
         deletedAt: null,
         ...(dto.status && { status: dto.status }),
         ...(dto.isCompleted !== undefined && { isCompleted: dto.isCompleted }),
@@ -79,7 +80,7 @@ export async function getGoalById(
     await checkPermission(userId, dashboardId);
 
     const goal = await prisma.financialGoal.findFirst({
-        where: { id, dashboardId, deletedAt: null },
+        where: { id, userId, deletedAt: null },
     });
 
     if (!goal) {
@@ -99,7 +100,7 @@ export async function updateGoal(
     await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
     const goal = await prisma.financialGoal.findFirst({
-        where: { id, dashboardId, deletedAt: null },
+        where: { id, userId, deletedAt: null },
     });
 
     if (!goal) {
@@ -147,7 +148,7 @@ export async function deleteGoal(
     await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
     const goal = await prisma.financialGoal.findFirst({
-        where: { id, dashboardId, deletedAt: null },
+        where: { id, userId, deletedAt: null },
     });
 
     if (!goal) {

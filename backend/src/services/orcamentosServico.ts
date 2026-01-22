@@ -32,7 +32,7 @@ export async function createBudget(
     const budget = await prisma.budget.create({
         data: {
             ...dto,
-            dashboardId,
+            userId,
         },
     });
 
@@ -49,7 +49,8 @@ export async function getBudgets(
     await checkPermission(userId, dashboardId);
 
     const where: Prisma.BudgetWhereInput = {
-        dashboardId,
+        userId,
+        // dashboardId removed - Budget is global to user
         ...(dto.period && { period: dto.period }),
         ...(dto.category && { category: dto.category }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
@@ -78,7 +79,7 @@ export async function getBudgetById(
     await checkPermission(userId, dashboardId);
 
     const budget = await prisma.budget.findFirst({
-        where: { id, dashboardId, deletedAt: null },
+        where: { id, userId, deletedAt: null },
     });
 
     if (!budget) {
@@ -144,7 +145,9 @@ export async function getBudgetProgress(
     const now = new Date();
     const { startDate, endDate } = calculatePeriodDates(budget.period, budget.startDate);
 
-    // Buscar transações no período
+    // Buscar transações no período (aqui mantemos dashboardId pois transações TEM dashboardId)
+    // Se quisermos que o budget considere TODOS os dashboards do usuário, removeríamos daqui também.
+    // Mas a lógica atual parece ser "Progresso do Budget DESTE dashboard".
     const transactions = await prisma.transaction.findMany({
         where: {
             dashboardId,
@@ -199,7 +202,7 @@ export async function getBudgetsSummary(
     await checkPermission(userId, dashboardId);
 
     const budgets = await prisma.budget.findMany({
-        where: { dashboardId, isActive: true, deletedAt: null },
+        where: { userId, isActive: true, deletedAt: null },
     });
 
     const progressPromises = budgets.map((b) => getBudgetProgress(b.id, dashboardId, userId));
@@ -228,7 +231,7 @@ export async function getBudgetAlerts(
 ): Promise<BudgetAlertDTO[]> {
     const budgets = await prisma.budget.findMany({
         where: {
-            dashboardId,
+            userId,
             isActive: true,
             deletedAt: null,
             alertAt: { not: null },
