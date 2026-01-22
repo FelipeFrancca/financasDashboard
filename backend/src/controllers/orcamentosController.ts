@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as orcamentosServico from '../services/orcamentosServico';
 import { AuthRequest } from '../middleware/auth';
+import { QueryBudgetsDTO } from '../dtos/budget.dto';
 
 export const criarOrcamento = async (req: AuthRequest, res: Response) => {
     const { dashboardId } = req.body;
@@ -12,18 +13,17 @@ export const criarOrcamento = async (req: AuthRequest, res: Response) => {
 };
 
 export const listarOrcamentos = async (req: AuthRequest, res: Response) => {
-    const { dashboardId, page, limit, ...rest } = req.query;
-    if (!dashboardId || typeof dashboardId !== 'string') {
-        return res.status(400).json({ success: false, error: 'dashboardId é obrigatório' });
-    }
+    // req.query já foi validado e transformado pelo Zod (parsed numbers, booleans, etc)
+    const { dashboardId, ...rest } = req.query as unknown as QueryBudgetsDTO;
 
-    const queryDto = {
-        ...rest,
-        page: page ? parseInt(page as string, 10) : 1,
-        limit: limit ? parseInt(limit as string, 10) : 10,
-    };
+    // TypeScript pode reclamar se não fizermos cast, pois req.query padrão é ParsedQs
+    // Mas garantimos via middleware que é QueryBudgetsDTO
 
-    const orcamentos = await orcamentosServico.getBudgets(queryDto as any, dashboardId, req.user!.userId);
+    const orcamentos = await orcamentosServico.getBudgets({
+        dashboardId,
+        ...rest
+    }, dashboardId, req.user!.userId);
+
     res.json({ success: true, data: orcamentos });
 };
 

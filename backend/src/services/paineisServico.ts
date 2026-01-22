@@ -234,29 +234,19 @@ export async function deleteDashboard(userId: string, dashboardId: string) {
   await checkPermission(userId, dashboardId, ['OWNER']);
 
   // Delete all related data in order
+  // Delete all related data in order
   await prisma.$transaction(async (tx) => {
     // Delete transactions
     await tx.transaction.deleteMany({ where: { dashboardId } });
 
-    // Delete categories
-    await tx.category.deleteMany({ where: { dashboardId } });
-
-    // Delete accounts
+    // Accounts vinculadas AO DASHBOARD (opcional, já que account tem dashboardId nullable)
+    console.log('Deletando contas vinculadas...');
     await tx.account.deleteMany({ where: { dashboardId } });
 
-    // Delete goals
-    await tx.goal.deleteMany({ where: { dashboardId } });
+    // Recurring transactions
+    await tx.recurringTransaction.deleteMany({ where: { dashboardId } });
 
-    // Delete budgets
-    await tx.budget.deleteMany({ where: { dashboardId } });
-
-    // Delete recurrences
-    await tx.recurrence.deleteMany({ where: { dashboardId } });
-
-    // Delete transfers
-    await tx.transfer.deleteMany({ where: { dashboardId } });
-
-    // Delete alerts
+    // Alerts
     await tx.alert.deleteMany({ where: { dashboardId } });
 
     // Delete invites

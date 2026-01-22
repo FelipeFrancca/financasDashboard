@@ -45,8 +45,9 @@ export async function processDueTransactions() {
         // 1. Criar transação real
         await prisma.transaction.create({
             data: {
-                dashboardId: rec.dashboardId,
-                accountId: rec.accountId!,
+                dashboard: { connect: { id: rec.dashboardId } },
+                user: { connect: { id: rec.userId } }, // User is required
+                account: rec.accountId ? { connect: { id: rec.accountId } } : undefined,
                 amount: rec.amount,
                 entryType: rec.entryType,
                 flowType: rec.flowType,

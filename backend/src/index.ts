@@ -21,6 +21,7 @@ import notificationPreferencesRotas from "./routes/notificationPreferencesRotas"
 import ingestionRotas from "./routes/ingestionRotas";
 import itemsRotas from "./routes/itemsRotas";
 import pushNotificationRotas from "./routes/pushNotificationRotas";
+import analysisRoutes from "./routes/analysisRoutes";
 
 // Middlewares e Utils
 import { logger } from "./utils/logger";
@@ -132,6 +133,7 @@ app.use("/api/alerts", alertasRotas);
 app.use("/api/dashboards", itemsRotas); // Adicionando rota de itens (merge com paineisRotas)
 app.use("/api/notification-preferences", notificationPreferencesRotas);
 app.use("/api/push", pushNotificationRotas);
+app.use("/api/analysis", analysisRoutes);
 
 // Health check
 app.get("/health", async (_req, res) => {

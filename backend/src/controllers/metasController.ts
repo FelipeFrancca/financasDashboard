@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import * as metasServico from '../services/metasServico';
 import { AuthRequest } from '../middleware/auth';
 
+import { QueryGoalsDTO } from '../dtos/goal.dto';
+
 export const criarMeta = async (req: AuthRequest, res: Response) => {
     const { dashboardId } = req.body;
     if (!dashboardId) {
@@ -12,18 +14,14 @@ export const criarMeta = async (req: AuthRequest, res: Response) => {
 };
 
 export const listarMetas = async (req: AuthRequest, res: Response) => {
-    const { dashboardId, page, limit, ...rest } = req.query;
-    if (!dashboardId || typeof dashboardId !== 'string') {
-        return res.status(400).json({ success: false, error: 'dashboardId é obrigatório' });
-    }
+    // req.query já foi validado e transformado pelo Zod
+    const { dashboardId, ...rest } = req.query as unknown as QueryGoalsDTO;
 
-    const queryDto = {
-        ...rest,
-        page: page ? parseInt(page as string, 10) : 1,
-        limit: limit ? parseInt(limit as string, 10) : 10,
-    };
+    const resultado = await metasServico.getGoals({
+        dashboardId,
+        ...rest
+    }, dashboardId, req.user!.userId);
 
-    const resultado = await metasServico.getGoals(queryDto as any, dashboardId, req.user!.userId);
     res.json({ success: true, data: resultado.data, total: resultado.total });
 };
 
