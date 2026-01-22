@@ -457,6 +457,7 @@ export const ingestionService = {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
+      timeout: 120000, // 2 minutos para PDFs grandes
     });
     return data.data;
   },

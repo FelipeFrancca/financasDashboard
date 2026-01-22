@@ -86,6 +86,12 @@ function handlePrismaError(error: Error): AppError {
             case 'P2014': // Relation violation
                 return new ValidationError('Violação de relacionamento entre registros');
 
+            case 'P2024': // Timeout
+                return new DatabaseError('Timeout na conexão com o banco de dados. Tente novamente.');
+
+            case 'P2034': // Transaction conflict
+                return new DatabaseError('Conflito de transação. Tente novamente.');
+
             default:
                 logger.error('Erro do Prisma não mapeado', error, 'PrismaError', { code: error.code });
                 return new DatabaseError('Erro ao processar operação no banco de dados');

@@ -27,6 +27,9 @@ export class AIConfig {
     ];
     private currentModelIndex: number = 0;
 
+    // Lock para evitar race conditions na rotação
+    private rotationLock: boolean = false;
+
     private constructor() {
         this.loadApiKeys();
         this.initializeClient();
@@ -100,28 +103,41 @@ export class AIConfig {
     /**
      * Tenta rotacionar para o próximo modelo ou próxima chave.
      * Retorna true se conseguiu rotacionar, false se esgotou todas as opções.
+     * Usa lock para evitar race conditions em alta concorrência.
      */
     public rotateStrategy(): boolean {
-        // 1. Tenta próximo modelo com a mesma chave
-        if (this.currentModelIndex < this.models.length - 1) {
-            this.currentModelIndex++;
-            console.log(`Rotacionando para próximo modelo: ${this.models[this.currentModelIndex]}`);
-            this.initializeClient();
-            return true;
+        // Evita race condition - se já está rotacionando, retorna false
+        if (this.rotationLock) {
+            console.log('Rotação já em andamento, aguardando...');
+            return false;
         }
 
-        // 2. Se esgotou modelos, tenta próxima chave (e reseta modelos)
-        if (this.currentKeyIndex < this.apiKeys.length - 1) {
-            this.currentKeyIndex++;
-            this.currentModelIndex = 0; // Volta para o primeiro/melhor modelo
-            console.log(`Rotacionando para próxima chave de API: ${this.currentKeyIndex + 1}`);
-            this.initializeClient();
-            return true;
-        }
+        this.rotationLock = true;
 
-        // 3. Esgotou tudo
-        console.error('Todas as combinações de chaves e modelos falharam.');
-        return false;
+        try {
+            // 1. Tenta próximo modelo com a mesma chave
+            if (this.currentModelIndex < this.models.length - 1) {
+                this.currentModelIndex++;
+                console.log(`Rotacionando para próximo modelo: ${this.models[this.currentModelIndex]}`);
+                this.initializeClient();
+                return true;
+            }
+
+            // 2. Se esgotou modelos, tenta próxima chave (e reseta modelos)
+            if (this.currentKeyIndex < this.apiKeys.length - 1) {
+                this.currentKeyIndex++;
+                this.currentModelIndex = 0; // Volta para o primeiro/melhor modelo
+                console.log(`Rotacionando para próxima chave de API: ${this.currentKeyIndex + 1}`);
+                this.initializeClient();
+                return true;
+            }
+
+            // 3. Esgotou tudo
+            console.error('Todas as combinações de chaves e modelos falharam.');
+            return false;
+        } finally {
+            this.rotationLock = false;
+        }
     }
 
     public getCurrentConfig() {

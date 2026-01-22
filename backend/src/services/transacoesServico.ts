@@ -1,5 +1,22 @@
 import { prisma } from '../database/conexao';
 import type { Transaction, Prisma } from "@prisma/client";
+import { ValidationError } from '../utils/AppError';
+
+/**
+ * Sanitiza string removendo tags HTML e limitando tamanho
+ * Previne XSS e inputs maliciosos
+ */
+function sanitizeString(input: string | null | undefined, maxLength: number = 500): string {
+  if (!input) return '';
+  // Remove tags HTML básicas
+  const cleaned = input
+    .replace(/<[^>]*>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .trim();
+  return cleaned.substring(0, maxLength);
+}
 
 export type TransactionFilters = {
   startDate?: string;
@@ -55,8 +72,19 @@ export async function getAllTransactions(filters: TransactionFilters = {}, dashb
   if (filters.minAmount) {
     where.amount = { gte: parseFloat(filters.minAmount) };
   }
-  if (filters.accountId) {
-    where.accountId = filters.accountId;
+  if ((filters as any).accountId) {
+    // Validar se a conta pertence ao dashboard para evitar vazamento de dados
+    const account = await prisma.account.findFirst({
+      where: {
+        id: (filters as any).accountId,
+        dashboardId,
+        deletedAt: null
+      }
+    });
+    if (account) {
+      where.accountId = (filters as any).accountId;
+    }
+    // Se a conta não pertence ao dashboard, simplesmente não aplica o filtro
   }
 
   // Installments filter
@@ -108,20 +136,43 @@ export async function createTransaction(data: any, dashboardId: string, userId: 
   const { checkPermission } = await import('./paineisServico');
   await checkPermission(userId, dashboardId, ['OWNER', 'EDITOR']);
 
+  // Validação de campos obrigatórios
+  if (!data.description || typeof data.description !== 'string') {
+    throw new ValidationError('Descrição é obrigatória');
+  }
+  if (typeof data.amount !== 'number' || isNaN(data.amount)) {
+    throw new ValidationError('Valor da transação é inválido');
+  }
+  if (!data.date) {
+    throw new ValidationError('Data da transação é obrigatória');
+  }
+  if (!data.entryType || !['Receita', 'Despesa'].includes(data.entryType)) {
+    throw new ValidationError('Tipo de entrada deve ser "Receita" ou "Despesa"');
+  }
+
   // Extract items from data if present
   const { items, ...transactionData } = data;
 
+  // Sanitizar campos de texto
+  const sanitizedData = {
+    ...transactionData,
+    description: sanitizeString(transactionData.description, 500),
+    notes: transactionData.notes ? sanitizeString(transactionData.notes, 1000) : undefined,
+    thirdPartyName: transactionData.thirdPartyName ? sanitizeString(transactionData.thirdPartyName, 200) : undefined,
+    thirdPartyDescription: transactionData.thirdPartyDescription ? sanitizeString(transactionData.thirdPartyDescription, 500) : undefined,
+  };
+
   return prisma.transaction.create({
     data: {
-      ...transactionData,
-      date: new Date(transactionData.date),
+      ...sanitizedData,
+      date: new Date(sanitizedData.date),
       dashboardId,
       userId,
       // Create items if provided
       ...(items && items.length > 0 && {
         items: {
           create: items.map((item: any) => ({
-            description: item.description,
+            description: sanitizeString(item.description, 200),
             quantity: item.quantity || 1,
             unitPrice: item.unitPrice,
             totalPrice: item.totalPrice,

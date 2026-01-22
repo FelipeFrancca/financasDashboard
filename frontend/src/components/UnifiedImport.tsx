@@ -61,12 +61,26 @@ import { hoverLift } from '../utils/animations';
 /**
  * Verifica se duas transações são potencialmente duplicadas
  * Critérios: mesmo mês/ano + valor igual + descrição similar (>50% match)
+ * IMPORTANTE: Transações de contas diferentes NÃO são consideradas duplicatas
  * Para parcelas: também verifica se é a mesma parcela da mesma compra
  */
 function isPotentialDuplicate(
-  newTx: { date: string | null; amount: number; description: string; installmentNumber?: number; installmentTotal?: number },
+  newTx: { 
+    date: string | null; 
+    amount: number; 
+    description: string; 
+    installmentNumber?: number; 
+    installmentTotal?: number;
+    accountId?: string; // Nova propriedade para comparação
+  },
   existingTx: Transaction
 ): boolean {
+  // Se a nova transação tem accountId definido e a existente também,
+  // e são de contas DIFERENTES, NÃO são duplicatas
+  if (newTx.accountId && existingTx.accountId && newTx.accountId !== existingTx.accountId) {
+    return false;
+  }
+
   // Comparar datas (mesmo mês/ano - não exige mesmo dia para parcelas)
   if (newTx.date && existingTx.date) {
     const newDate = new Date(newTx.date);
@@ -135,9 +149,17 @@ function isPotentialDuplicate(
 
 /**
  * Encontra possíveis duplicatas em uma lista de transações existentes
+ * Considera accountId para evitar falsos positivos entre contas diferentes
  */
 function findDuplicates(
-  newTransactions: Array<{ date: string | null; amount: number; description: string; installmentNumber?: number; installmentTotal?: number }>,
+  newTransactions: Array<{ 
+    date: string | null; 
+    amount: number; 
+    description: string; 
+    installmentNumber?: number; 
+    installmentTotal?: number;
+    accountId?: string;
+  }>,
   existingTransactions: Transaction[]
 ): Map<number, Transaction> {
   const duplicates = new Map<number, Transaction>();
@@ -278,15 +300,21 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
 
   // Track loading time for user feedback
   useEffect(() => {
-    let interval: NodeJS.Timeout;
+    let interval: NodeJS.Timeout | null = null;
+    
     if (loading) {
       setLoadingTime(0);
       interval = setInterval(() => {
         setLoadingTime(prev => prev + 1);
       }, 1000);
+    } else {
+      setLoadingTime(0);
     }
+    
     return () => {
-      if (interval) clearInterval(interval);
+      if (interval) {
+        clearInterval(interval);
+      }
     };
   }, [loading]);
 
@@ -397,6 +425,15 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         ? `${holderName} - ${institution || 'Cartão'} *${cardLastDigits}`
         : `${institution || 'Cartão de Crédito'} *${cardLastDigits}`;
 
+      console.log('🏦 Criando conta de cartão de crédito:', {
+        accountName,
+        cardLastDigits,
+        institution,
+        dueDay,
+        creditLimit,
+        dashboardId,
+      });
+
       const newAccount = await createAccount.mutateAsync({
         data: {
           name: accountName,
@@ -415,9 +452,15 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         dashboardId: dashboardId || '',
       });
 
+      console.log('✅ Conta de cartão criada com sucesso:', {
+        id: newAccount.id,
+        name: newAccount.name,
+        cardLastDigits: newAccount.cardLastDigits,
+      });
+
       return newAccount as Account;
     } catch (error) {
-      console.error('Erro ao criar conta de cartão:', error);
+      console.error('❌ Erro ao criar conta de cartão:', error);
       return undefined;
     }
   };
@@ -949,6 +992,16 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     let totalInstallmentsCreated = 0;
     let skippedPayments = 0;
     let skippedRefunds = 0;
+
+    // Log de diagnóstico para vinculação de conta
+    console.log('📊 Preparando transações para importação:', {
+      selectedCount: selectedTxs.length,
+      linkedAccountId,
+      linkedInstitution,
+      cardDigits,
+      institutionName,
+      hasStatementInfo: !!result.statementInfo,
+    });
 
     for (const tx of selectedTxs) {
       const installment = parseInstallmentInfo(tx.installmentInfo);

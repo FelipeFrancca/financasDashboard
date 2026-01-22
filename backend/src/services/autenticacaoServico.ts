@@ -27,6 +27,17 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || "30d";
 
+// Validação de JWT secrets - aviso em vez de falha fatal para permitir diagnóstico
+if (!JWT_SECRET) {
+  console.error('⚠️  AVISO: JWT_SECRET não está configurado nas variáveis de ambiente');
+  console.error('   A autenticação não funcionará corretamente até que seja configurado.');
+}
+
+if (!JWT_REFRESH_SECRET) {
+  console.error('⚠️  AVISO: JWT_REFRESH_SECRET não está configurado nas variáveis de ambiente');
+  console.error('   O refresh de tokens não funcionará corretamente até que seja configurado.');
+}
+
 // Configure email transporter (using same SMTP config as emailServico)
 const emailTransporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp-relay.sendinblue.com',

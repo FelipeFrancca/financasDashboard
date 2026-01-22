@@ -58,6 +58,30 @@ export class IngestionService {
     private static readonly BASE_DELAY_MS = 1000;
     private static readonly REQUEST_TIMEOUT_MS = 90000; // 90 segundos para PDFs multi-página
 
+    // Tamanho mínimo de arquivo (evita arquivos vazios/corrompidos)
+    private static readonly MIN_FILE_SIZE = 100; // 100 bytes
+
+    /**
+     * Valida assinatura do arquivo (magic bytes) para segurança
+     * Previne upload de arquivos maliciosos com mimetype falso
+     */
+    private validateFileSignature(buffer: Buffer, mimeType: SupportedMimeType): boolean {
+        if (buffer.length < 4) return false;
+
+        const signatures: Record<SupportedMimeType, number[][]> = {
+            'application/pdf': [[0x25, 0x50, 0x44, 0x46]], // %PDF
+            'image/jpeg': [[0xFF, 0xD8, 0xFF]],
+            'image/png': [[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]],
+        };
+
+        const expectedSigs = signatures[mimeType];
+        if (!expectedSigs) return false;
+
+        return expectedSigs.some(sig =>
+            sig.every((byte, i) => buffer[i] === byte)
+        );
+    }
+
     /**
      * Processa um arquivo e extrai dados financeiros
      */
@@ -66,6 +90,22 @@ export class IngestionService {
         mimeType: SupportedMimeType,
         availableCategories: string[] = []
     ): Promise<ExtractionResult> {
+        // Validação de tamanho mínimo
+        if (fileBuffer.length < IngestionService.MIN_FILE_SIZE) {
+            throw new ValidationError('Arquivo muito pequeno ou corrompido');
+        }
+
+        // Validação de magic bytes para segurança
+        if (!this.validateFileSignature(fileBuffer, mimeType)) {
+            logger.warn('Arquivo com assinatura inválida rejeitado', 'IngestionService', {
+                claimedMimeType: mimeType,
+                actualBytes: fileBuffer.slice(0, 8).toString('hex'),
+            });
+            throw new ValidationError(
+                'Tipo de arquivo inválido. O conteúdo não corresponde ao tipo declarado.'
+            );
+        }
+
         logger.info('Iniciando processamento de arquivo', 'IngestionService', {
             mimeType,
             sizeBytes: fileBuffer.length,
