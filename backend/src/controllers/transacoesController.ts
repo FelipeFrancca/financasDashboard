@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import * as transacoesServico from '../services/transacoesServico';
 import { generateCSV, generateXLSX } from '../services/exportService';
 import { AuthRequest } from '../middleware/auth';
+import { websocketService, WS_EVENTS } from '../services/websocketServico';
 
 export const criarTransacao = async (req: AuthRequest, res: Response) => {
     const { dashboardId } = req.body;
@@ -9,6 +10,13 @@ export const criarTransacao = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ success: false, error: 'dashboardId é obrigatório' });
     }
     const transacao = await transacoesServico.createTransaction(req.body, dashboardId, req.user!.userId);
+    
+    // Emitir evento WebSocket
+    websocketService.emitToDashboard(dashboardId, WS_EVENTS.TRANSACTION_CREATED, {
+        transaction: transacao,
+        userId: req.user!.userId,
+    });
+    
     res.status(201).json({ success: true, data: transacao });
 };
 
@@ -27,6 +35,13 @@ export const criarTransacoesEmLote = async (req: AuthRequest, res: Response) => 
         });
     }
     const transacoes = await transacoesServico.createManyTransactions(transactions, dashboardId, req.user!.userId);
+    
+    // Emitir evento WebSocket para lote
+    websocketService.emitToDashboard(dashboardId, WS_EVENTS.TRANSACTIONS_IMPORTED, {
+        count: transacoes.length,
+        userId: req.user!.userId,
+    });
+    
     res.status(201).json({ success: true, data: { count: transacoes.length, transactions: transacoes } });
 };
 
@@ -54,6 +69,13 @@ export const atualizarTransacao = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ success: false, error: 'dashboardId é obrigatório' });
     }
     const transacao = await transacoesServico.updateTransaction(req.params.id, req.body, dashboardId, req.user!.userId);
+    
+    // Emitir evento WebSocket
+    websocketService.emitToDashboard(dashboardId, WS_EVENTS.TRANSACTION_UPDATED, {
+        transaction: transacao,
+        userId: req.user!.userId,
+    });
+    
     res.json({ success: true, data: transacao });
 };
 
@@ -63,6 +85,13 @@ export const deletarTransacao = async (req: AuthRequest, res: Response) => {
         return res.status(400).json({ success: false, error: 'dashboardId é obrigatório' });
     }
     await transacoesServico.deleteTransaction(req.params.id, dashboardId, req.user!.userId);
+    
+    // Emitir evento WebSocket
+    websocketService.emitToDashboard(dashboardId, WS_EVENTS.TRANSACTION_DELETED, {
+        transactionId: req.params.id,
+        userId: req.user!.userId,
+    });
+    
     res.status(204).send();
 };
 

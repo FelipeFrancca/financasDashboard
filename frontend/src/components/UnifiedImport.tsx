@@ -271,7 +271,7 @@ interface UnifiedImportProps {
   compact?: boolean;
 }
 
-type ImportMode = 'csv' | 'ai';
+type ImportMode = 'csv' | 'xlsx' | 'ai';
 
 export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: UnifiedImportProps) {
   const { dashboardId } = useParams<{ dashboardId: string }>();
@@ -469,6 +469,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
   const detectFileType = (file: File): ImportMode => {
     const extension = file.name.split('.').pop()?.toLowerCase();
     if (extension === 'csv') return 'csv';
+    if (extension === 'xlsx' || extension === 'xls') return 'xlsx';
     return 'ai';
   };
 
@@ -489,6 +490,10 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
     // Auto-process CSV files
     if (detectedMode === 'csv') {
       processCSV(selectedFile);
+    }
+    // Auto-process XLSX files
+    if (detectedMode === 'xlsx') {
+      processXLSX(selectedFile);
     }
   };
 
@@ -555,6 +560,113 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
         setLoading(false);
       }
     });
+  };
+
+  // Process XLSX files with multiple tabs via backend API
+  const processXLSX = async (xlsxFile: File) => {
+    setLoading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', xlsxFile);
+      if (dashboardId) {
+        formData.append('dashboardId', dashboardId);
+      }
+
+      const token = localStorage.getItem('accessToken') || sessionStorage.getItem('accessToken');
+      const API_BASE_URL = import.meta.env.VITE_API_URL === undefined || import.meta.env.VITE_API_URL === ''
+        ? ''
+        : import.meta.env.VITE_API_URL;
+
+      const response = await fetch(`${API_BASE_URL}/api/reports/import/preview`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Erro ao processar planilha XLSX');
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.data) {
+        const { previewId, transactions: previewTransactions, installments, summary } = data.data;
+        
+        // Store previewId for later confirmation
+        sessionStorage.setItem('xlsxPreviewId', previewId);
+        
+        // Convert preview transactions to the format expected by the component
+        const allTransactions: Partial<Transaction>[] = [];
+        
+        // Add regular transactions
+        if (previewTransactions && Array.isArray(previewTransactions)) {
+          previewTransactions.forEach((t: any) => {
+            allTransactions.push({
+              date: t.date,
+              entryType: t.entryType,
+              flowType: t.flowType || 'Variável',
+              category: t.category || 'Outros',
+              subcategory: t.subcategory,
+              description: t.description,
+              amount: t.amount,
+              paymentMethod: t.paymentMethod,
+              institution: t.institution,
+              cardBrand: t.cardBrand,
+              installmentTotal: t.installmentTotal || 0,
+              installmentNumber: t.installmentNumber || 0,
+              installmentStatus: t.installmentStatus || 'N/A',
+              notes: t.notes,
+              isTemporary: false,
+              dashboardId,
+            });
+          });
+        }
+
+        // Add installment transactions
+        if (installments && Array.isArray(installments)) {
+          installments.forEach((inst: any) => {
+            allTransactions.push({
+              date: inst.date,
+              entryType: 'Despesa',
+              flowType: inst.costCenter || 'Variável',
+              category: inst.category || 'Parcelamentos',
+              description: inst.description,
+              amount: inst.amount,
+              institution: inst.institution,
+              installmentTotal: inst.installmentTotal || 0,
+              installmentNumber: inst.installmentNumber || 0,
+              installmentStatus: 'Pendente',
+              notes: `Parcela ${inst.installmentNumber}/${inst.installmentTotal}`,
+              isTemporary: false,
+              dashboardId,
+            });
+          });
+        }
+
+        // Show summary toast
+        if (summary) {
+          showSuccess(
+            `Planilha processada: ${summary.totalTransactions || 0} transações, ${summary.totalInstallments || 0} parcelas, ${summary.totalRecurring || 0} recorrentes`,
+            { title: 'XLSX com Múltiplas Abas' }
+          );
+        }
+
+        setCsvPreview(allTransactions);
+      } else {
+        throw new Error('Resposta inválida do servidor');
+      }
+    } catch (error: any) {
+      console.error('Erro ao processar XLSX:', error);
+      showError(error.message || 'Não foi possível processar a planilha XLSX', { 
+        title: 'Erro na Importação',
+        text: 'Verifique se o arquivo está no formato correto com as abas esperadas (JAN, FEV, PARCELAMENTOS, etc.)'
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const { data: categories } = useCategories(dashboardId!);
@@ -1550,7 +1662,11 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                 Importar Dados
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {mode === 'csv' ? 'Planilha CSV com transações' : 'Notas fiscais e boletos via IA'}
+                {mode === 'csv' 
+                  ? 'Planilha CSV com transações' 
+                  : mode === 'xlsx'
+                  ? 'Planilha Excel com múltiplas abas'
+                  : 'Notas fiscais e boletos via IA'}
               </Typography>
             </Box>
           </Box>
@@ -1581,7 +1697,11 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
           >
             <ToggleButton value="csv">
               <TableChart fontSize="small" />
-              {!isMobile && 'Planilha'}
+              {!isMobile && 'CSV'}
+            </ToggleButton>
+            <ToggleButton value="xlsx">
+              <TableChart fontSize="small" />
+              {!isMobile && 'Excel'}
             </ToggleButton>
             <ToggleButton value="ai">
               <AutoAwesome fontSize="small" />
@@ -1626,7 +1746,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={mode === 'csv' ? '.csv' : '.pdf,.jpg,.jpeg,.png'}
+                accept={mode === 'csv' ? '.csv' : mode === 'xlsx' ? '.xlsx,.xls' : '.pdf,.jpg,.jpeg,.png'}
                 style={{ display: 'none' }}
                 onChange={handleFileSelect}
               />
@@ -1638,6 +1758,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                       <PictureAsPdf sx={{ fontSize: 64, color: 'error.main' }} />
                     ) : file.name.endsWith('.csv') ? (
                       <TableChart sx={{ fontSize: 64, color: 'success.main' }} />
+                    ) : file.name.endsWith('.xlsx') || file.name.endsWith('.xls') ? (
+                      <TableChart sx={{ fontSize: 64, color: 'info.main' }} />
                     ) : (
                       <Image sx={{ fontSize: 64, color: 'primary.main' }} />
                     )}
@@ -1653,7 +1775,7 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                     />
                   </Box>
                   <Typography variant="body2" color="text.secondary" textAlign="center">
-                    {mode === 'csv' ? 'Processando planilha...' : getLoadingMessage()}
+                    {mode === 'csv' ? 'Processando planilha CSV...' : mode === 'xlsx' ? 'Processando planilha Excel com múltiplas abas...' : getLoadingMessage()}
                   </Typography>
                   {mode === 'ai' && loadingTime > 5 && (
                     <Typography variant="caption" color="text.secondary">
@@ -1755,6 +1877,14 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
                         label="CSV"
                         variant="outlined"
                         color="success"
+                        sx={{ fontWeight: 600 }}
+                      />
+                    ) : mode === 'xlsx' ? (
+                      <Chip
+                        icon={<TableChart />}
+                        label="Excel (XLSX)"
+                        variant="outlined"
+                        color="info"
                         sx={{ fontWeight: 600 }}
                       />
                     ) : (
@@ -2291,8 +2421,8 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
           </Fade>
         )}
 
-        {/* Download Template - Only for CSV mode */}
-        {mode === 'csv' && !csvPreview && !file && (
+        {/* Download Template - For CSV and XLSX modes */}
+        {(mode === 'csv' || mode === 'xlsx') && !csvPreview && !file && (
           <Box sx={{ mt: 2, textAlign: 'center' }}>
             <Button
               variant="text"
@@ -2303,6 +2433,11 @@ export default function UnifiedImport({ onImportCSV, onSaveAITransaction }: Unif
             >
               Baixar Modelo CSV
             </Button>
+            {mode === 'xlsx' && (
+              <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 1 }}>
+                Formato aceito: Planilha Excel com abas mensais (JAN, FEV, etc.), PARCELAMENTOS, DEVEDORES, D. FIXA
+              </Typography>
+            )}
           </Box>
         )}
       </CardContent>

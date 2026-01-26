@@ -6,6 +6,7 @@
 import { prisma } from '../database/conexao';
 import { logger } from '../utils/logger';
 import { aiRouter } from './aiRouterServico';
+import { budgetAllocationService } from './budgetAllocationServico';
 
 // Tipos para análise
 interface CategorySpending {
@@ -33,6 +34,12 @@ interface UnusualSpending {
     zScore: number;
 }
 
+interface AllocationAlert {
+    type: 'warning' | 'critical';
+    message: string;
+    allocation?: string;
+}
+
 export interface FinancialSummary {
     period: { start: Date; end: Date };
     totalIncome: number;
@@ -43,6 +50,7 @@ export interface FinancialSummary {
     trends: SpendingTrend[];
     unusualTransactions: UnusualSpending[];
     alerts: string[];
+    allocationAlerts?: AllocationAlert[];
 }
 
 /**
@@ -111,6 +119,16 @@ export class FinancialAnalysisService {
             unusualTransactions,
         });
 
+        // Obter alertas de alocação de orçamento
+        let allocationAlerts: AllocationAlert[] = [];
+        if (userId) {
+            try {
+                allocationAlerts = await budgetAllocationService.getAllocationAlerts(userId, dashboardId);
+            } catch (error) {
+                logger.warn('Não foi possível obter alertas de alocação', 'FinancialAnalysis');
+            }
+        }
+
         return {
             period: { start: startDate, end: endDate },
             totalIncome: income,
@@ -121,6 +139,7 @@ export class FinancialAnalysisService {
             trends,
             unusualTransactions,
             alerts,
+            allocationAlerts,
         };
     }
 

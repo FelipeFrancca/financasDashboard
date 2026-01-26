@@ -175,6 +175,60 @@ Crie um resumo curto (máximo 150 palavras) destacando os pontos principais e um
 
         return this.generateText(systemPrompt, userPrompt, 'text_summary');
     }
+
+    /**
+     * Gera análise de alocação de orçamento usando Groq
+     */
+    public async generateAllocationAnalysis(
+        data: {
+            monthlyIncome: number;
+            allocations: {
+                name: string;
+                targetPercentage: number;
+                actualPercentage: number;
+                targetAmount: number;
+                actualAmount: number;
+                status: 'under' | 'on_track' | 'over';
+            }[];
+            unallocatedExpenses: { category: string; amount: number }[];
+            overallStatus: 'healthy' | 'warning' | 'critical';
+        }
+    ): Promise<string> {
+        const systemPrompt = `Você é um consultor financeiro especializado em orçamento pessoal.
+Analise a distribuição de gastos do usuário em relação às metas de alocação definidas.
+Seja direto, prático e construtivo. Foque em ações que o usuário pode tomar.
+Responda em português brasileiro.`;
+
+        const statusEmoji = {
+            under: '✅',
+            on_track: '✅',
+            over: '⚠️',
+        };
+
+        const overallStatusText = {
+            healthy: 'Saudável ✅',
+            warning: 'Atenção ⚠️',
+            critical: 'Crítico 🚨',
+        };
+
+        const userPrompt = `Analise a distribuição de orçamento deste mês:
+
+**Receita Mensal:** R$ ${data.monthlyIncome.toFixed(2)}
+**Status Geral:** ${overallStatusText[data.overallStatus]}
+
+**Alocações vs Realizado:**
+${data.allocations.map(a => `${statusEmoji[a.status]} ${a.name}: Meta ${a.targetPercentage}% (R$ ${a.targetAmount.toFixed(2)}) → Real ${a.actualPercentage.toFixed(1)}% (R$ ${a.actualAmount.toFixed(2)})`).join('\n')}
+
+${data.unallocatedExpenses.length > 0 ? `**Gastos Não Classificados:**\n${data.unallocatedExpenses.slice(0, 5).map(e => `- ${e.category}: R$ ${e.amount.toFixed(2)}`).join('\n')}` : ''}
+
+Por favor, forneça:
+1. Avaliação geral da distribuição (2-3 frases)
+2. As 2 áreas que mais precisam de atenção
+3. 2 sugestões práticas para melhorar a distribuição
+4. Uma meta realista para o próximo mês`;
+
+        return this.generateText(systemPrompt, userPrompt, 'financial_analysis');
+    }
 }
 
 // Exporta a instância singleton

@@ -12,7 +12,7 @@ export interface Transaction {
   date: string | Date;
   dueDate?: string | Date; // Data de vencimento da fatura (para transações de cartão)
   entryType: 'Receita' | 'Despesa';
-  flowType: 'Fixa' | 'Variável';
+  flowType: string; // Pode ser 'Fixa'/'Variável' para receitas ou nome da alocação para despesas
   category: string;
   subcategory?: string;
   description: string;

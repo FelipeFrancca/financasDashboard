@@ -17,6 +17,10 @@ export async function getSummary(req: Request, res: Response, next: NextFunction
         const { dashboardId } = req.params;
         const userId = (req as any).user?.id;
 
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Usuário não autenticado' });
+        }
+
         // Parse de datas (default: último mês)
         const endDate = req.query.endDate
             ? new Date(req.query.endDate as string)
@@ -49,6 +53,10 @@ export async function getInsights(req: Request, res: Response, next: NextFunctio
     try {
         const { dashboardId } = req.params;
         const userId = (req as any).user?.id;
+
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Usuário não autenticado' });
+        }
 
         const endDate = req.query.endDate
             ? new Date(req.query.endDate as string)

@@ -20,6 +20,8 @@ import {
   Radio,
   RadioGroup,
   FormControl,
+  Chip,
+  alpha,
 } from '@mui/material';
 import Person from '@mui/icons-material/Person';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
@@ -28,6 +30,7 @@ import { useForm, Controller } from 'react-hook-form';
 import { useParams } from 'react-router-dom';
 import { useCategories, useCreateCategory } from '../hooks/api/useCategories';
 import { useAccounts, useCreateAccount } from '../hooks/api/useAccounts';
+import { useDefaultAllocationProfile } from '../hooks/api/useBudgetAllocation';
 import TransactionItemsEditor from './TransactionItemsEditor';
 import type { Transaction, TransactionItem, Account } from '../types';
 
@@ -89,7 +92,7 @@ interface TransactionFormProps {
 interface TransactionFormData {
   date: string;
   entryType: 'Receita' | 'Despesa';
-  flowType: 'Fixa' | 'Variável';
+  flowType: string; // Pode ser 'Fixa'/'Variável' para receitas ou nome da alocação para despesas
   category: string;
   subcategory: string;
   description: string;
@@ -144,6 +147,7 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
   const { dashboardId } = useParams<{ dashboardId: string }>();
   const { data: categories = [] } = useCategories(dashboardId || '');
   const { data: accounts = [] } = useAccounts(dashboardId || '');
+  const { data: allocationProfile } = useDefaultAllocationProfile(dashboardId);
   const createCategory = useCreateCategory();
   const createAccount = useCreateAccount();
 
@@ -329,6 +333,13 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
                     onChange={(e) => {
                       field.onChange(e);
                       setValue('category', ''); // Reset category on type change
+                      // Definir flowType apropriado baseado no tipo
+                      const newEntryType = e.target.value;
+                      if (newEntryType === 'Despesa' && allocationProfile?.allocations?.length) {
+                        setValue('flowType', allocationProfile.allocations[0].name);
+                      } else {
+                        setValue('flowType', 'Fixa');
+                      }
                     }}
                   >
                     <MenuItem value="Receita">Receita</MenuItem>
@@ -341,12 +352,69 @@ export default function TransactionForm({ open, transaction, onClose, onSave }: 
               <Controller
                 name="flowType"
                 control={control}
-                render={({ field }) => (
-                  <TextField {...field} select fullWidth label="Fluxo">
-                    <MenuItem value="Fixa">Fixa</MenuItem>
-                    <MenuItem value="Variável">Variável</MenuItem>
-                  </TextField>
-                )}
+                render={({ field }) => {
+                  // Se for Receita, usar opções simples; se for Despesa, usar alocações do perfil
+                  const isExpense = entryType === 'Despesa';
+                  const allocationOptions = allocationProfile?.allocations || [];
+                  
+                  return (
+                    <TextField 
+                      {...field} 
+                      select 
+                      fullWidth 
+                      label={isExpense ? 'Alocação de Orçamento' : 'Fluxo'}
+                      helperText={isExpense ? 'Selecione em qual categoria do orçamento esta despesa se encaixa' : undefined}
+                    >
+                      {isExpense ? (
+                        allocationOptions.length > 0 ? (
+                          allocationOptions.map((allocation) => (
+                            <MenuItem key={allocation.name} value={allocation.name}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <Box 
+                                  sx={{ 
+                                    width: 12, 
+                                    height: 12, 
+                                    borderRadius: '50%', 
+                                    backgroundColor: allocation.color || '#666',
+                                    flexShrink: 0
+                                  }} 
+                                />
+                                <Typography variant="body2">
+                                  {allocation.name}
+                                </Typography>
+                                <Chip 
+                                  size="small" 
+                                  label={`${allocation.percentage}%`} 
+                                  sx={{ 
+                                    ml: 'auto', 
+                                    height: 20,
+                                    fontSize: '0.7rem',
+                                    backgroundColor: alpha(allocation.color || '#666', 0.2),
+                                    color: allocation.color || '#666'
+                                  }} 
+                                />
+                              </Box>
+                            </MenuItem>
+                          ))
+                        ) : (
+                          // Fallback para opções padrão se não houver perfil de alocação
+                          [
+                            <MenuItem key="Despesas Fixas" value="Despesas Fixas">Despesas Fixas</MenuItem>,
+                            <MenuItem key="Lazer" value="Lazer">Lazer</MenuItem>,
+                            <MenuItem key="Investimentos" value="Investimentos">Investimentos</MenuItem>,
+                            <MenuItem key="Estudos" value="Estudos">Estudos</MenuItem>,
+                            <MenuItem key="Cuidados Pessoais" value="Cuidados Pessoais">Cuidados Pessoais</MenuItem>,
+                          ]
+                        )
+                      ) : (
+                        [
+                          <MenuItem key="Fixa" value="Fixa">Fixa</MenuItem>,
+                          <MenuItem key="Variável" value="Variável">Variável</MenuItem>,
+                        ]
+                      )}
+                    </TextField>
+                  );
+                }}
               />
             </Grid>
 

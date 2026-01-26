@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { transactionService } from '../../services/api';
 import type { Transaction, TransactionFilters } from '../../types';
+import { allocationKeys } from './useBudgetAllocation';
 
 // Query keys factory for better cache management
 export const transactionKeys = {
@@ -58,6 +59,8 @@ export const useCreateTransaction = () => {
             );
             // Invalidate stats to recalculate
             queryClient.invalidateQueries({ queryKey: transactionKeys.allStats() });
+            // Invalidate allocation analysis to recalculate
+            queryClient.invalidateQueries({ queryKey: allocationKeys.all });
         },
         onError: (_err, _newTransaction, _context) => {
             // Revert on error by refetching
@@ -98,6 +101,8 @@ export const useUpdateTransaction = () => {
                 }
             );
             queryClient.invalidateQueries({ queryKey: transactionKeys.allStats() });
+            // Invalidate allocation analysis to recalculate
+            queryClient.invalidateQueries({ queryKey: allocationKeys.all });
         },
         onError: (_err, _vars, context) => {
             // Revert to previous data on error
@@ -134,6 +139,8 @@ export const useDeleteTransaction = () => {
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: transactionKeys.allStats() });
+            // Invalidate allocation analysis to recalculate
+            queryClient.invalidateQueries({ queryKey: allocationKeys.all });
         },
         onError: (_err, _vars, context) => {
             if (context?.previousData) {
@@ -154,6 +161,8 @@ export const useCreateManyTransactions = () => {
             // Full invalidation for bulk operations
             queryClient.invalidateQueries({ queryKey: transactionKeys.all });
             queryClient.invalidateQueries({ queryKey: transactionKeys.allStats() });
+            // Invalidate allocation analysis to recalculate
+            queryClient.invalidateQueries({ queryKey: allocationKeys.all });
         },
     });
 };

@@ -38,6 +38,7 @@ import {
 import { useParams } from 'react-router-dom';
 import { useTransactions } from '../hooks/api/useTransactions';
 import { useAccounts } from '../hooks/api/useAccounts';
+import BudgetAllocationManager from '../components/BudgetAllocationManager';
 import type { Transaction, Account } from '../types';
 
 interface FinancialTip {
@@ -561,6 +562,16 @@ export default function FinancialHealthPage() {
                         </CardContent>
                     </Card>
                 </Grid>
+
+                {/* Budget Allocation Manager */}
+                {dashboardId && (
+                    <Grid item xs={12}>
+                        <BudgetAllocationManager
+                            dashboardId={dashboardId}
+                            totalIncome={metrics.totalReceitas}
+                        />
+                    </Grid>
+                )}
             </Grid>
         </Container>
     );

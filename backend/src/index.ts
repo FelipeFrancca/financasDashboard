@@ -5,6 +5,7 @@ import passport from "passport";
 import swaggerUi from "swagger-ui-express";
 import swaggerJsdoc from "swagger-jsdoc";
 import path from "path";
+import { createServer } from "http";
 
 // Rotas (Novo Padrão em Português)
 import transacoesRotas from "./routes/transacoesRotas";
@@ -22,6 +23,8 @@ import ingestionRotas from "./routes/ingestionRotas";
 import itemsRotas from "./routes/itemsRotas";
 import pushNotificationRotas from "./routes/pushNotificationRotas";
 import analysisRoutes from "./routes/analysisRoutes";
+import reportsRotas from "./routes/reportsRotas";
+import budgetAllocationRotas from "./routes/budgetAllocationRotas";
 
 // Middlewares e Utils
 import { logger } from "./utils/logger";
@@ -34,6 +37,9 @@ import { requestLogger, slowRequestLogger } from "./middleware/requestLogger";
 import { generalLimiter } from "./middleware/rateLimiter";
 import { openApiConfig } from "./config/openapi";
 import { auditMiddleware } from "./middleware/audit";
+
+// WebSocket
+import { websocketService } from "./services/websocketServico";
 
 // Force restart
 const app: Application = express();
@@ -134,6 +140,8 @@ app.use("/api/dashboards", itemsRotas); // Adicionando rota de itens (merge com 
 app.use("/api/notification-preferences", notificationPreferencesRotas);
 app.use("/api/push", pushNotificationRotas);
 app.use("/api/analysis", analysisRoutes);
+app.use("/api/reports", reportsRotas);
+app.use("/api/allocations", budgetAllocationRotas);
 
 // Health check
 app.get("/health", async (_req, res) => {
@@ -204,10 +212,15 @@ if (!isProduction) {
 }
 app.use(errorHandler);
 
-const server = app.listen(PORT, () => {
+// Criar servidor HTTP e inicializar WebSocket
+const httpServer = createServer(app);
+websocketService.initialize(httpServer);
+
+const server = httpServer.listen(PORT, () => {
   logger.info(`🚀 Server running on http://localhost:${PORT}`, 'Server');
   logger.info(`📚 API Documentation: http://localhost:${PORT}/api-docs`, 'Server');
   logger.info(`🏥 Health check: http://localhost:${PORT}/health`, 'Server');
+  logger.info(`🔌 WebSocket enabled`, 'Server');
   logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`, 'Server');
   console.log('✅ Servidor iniciado com sucesso!');
 });

@@ -49,11 +49,13 @@ import {
     Person,
     HealthAndSafety,
     AutoAwesome,
+    PieChart,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import UserAvatar from '../components/UserAvatar';
 import NotificationBell from '../components/NotificationBell';
+import WebSocketIndicator from '../components/WebSocketIndicator';
 import { Logo } from '../components/Logo';
 
 const drawerWidth = 260;
@@ -131,6 +133,7 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                 icon: <Flag />,
                 children: [
                     { text: 'Orçamentos', icon: <AttachMoney />, path: `${basePath}/budgets` },
+                    { text: 'Alocação de Receita', icon: <PieChart />, path: `${basePath}/allocations` },
                     { text: 'Metas', icon: <Flag />, path: `${basePath}/goals` },
                     { text: 'Recorrências', icon: <EventRepeat />, path: `${basePath}/recurrences` },
                 ],
@@ -278,6 +281,9 @@ export default function DashboardLayout({ mode, onToggleTheme }: DashboardLayout
                     </Box>
 
                     <NotificationBell />
+
+                    {/* WebSocket Status */}
+                    <WebSocketIndicator dashboardId={dashboardId} />
 
                     <IconButton color="inherit" onClick={onToggleTheme} sx={{ mr: 1 }}>
                         {mode === 'dark' ? <Brightness7 /> : <Brightness4 />}

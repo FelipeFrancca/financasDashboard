@@ -43,6 +43,7 @@ model User {
   updatedAt               DateTime                 @updatedAt
   NotificationPreferences NotificationPreferences?
   PushSubscriptions       PushSubscription[]
+  budgetAllocationProfiles BudgetAllocationProfile[]
 
   @@index([email])
   @@index([googleId])
@@ -55,6 +56,7 @@ model Transaction {
   dueDate           DateTime? // Data de vencimento da fatura do cartão
   entryType         String // "Receita" ou "Despesa"
   flowType          String // "Fixa" ou "Variável"
+  costCenter        String?  // "Essencial", "Não essencial", "Despesa Fixa" - Centro de custo
   category          String
   subcategory       String?
   description       String
@@ -154,6 +156,7 @@ model Dashboard {
   recurringTransactions RecurringTransaction[]
   alerts      Alert[]
   accounts    Account[]         // Contas vinculadas a este dashboard
+  budgetAllocationProfiles BudgetAllocationProfile[] // Perfis de alocação vinculados
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -612,4 +615,57 @@ model PushSubscription {
 
   @@index([userId])
   @@map("push_subscriptions")
+}
+
+// ============================================
+// BUDGET ALLOCATION MODEL - Alocação de Orçamento por Porcentagem
+// ============================================
+
+model BudgetAllocationProfile {
+  id          String  @id @default(cuid())
+  name        String  // Nome do perfil (ex: "Padrão", "Agressivo", "Conservador")
+  description String?
+  isDefault   Boolean @default(false) // Perfil padrão do usuário
+  isActive    Boolean @default(true)
+
+  // Relacionamento com usuário
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Dashboard específico ou null para todos
+  dashboardId String?
+  dashboard   Dashboard? @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  // Categorias de alocação
+  allocations BudgetAllocation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, name])
+  @@index([userId, isDefault])
+  @@index([dashboardId])
+  @@map("budget_allocation_profiles")
+}
+
+model BudgetAllocation {
+  id         String  @id @default(cuid())
+  name       String  // Nome da categoria (ex: "Despesas Fixas", "Lazer")
+  percentage Float   // Porcentagem da receita (0-100)
+  color      String? // Cor para exibição no frontend
+  icon       String? // Ícone para exibição
+  order      Int     @default(0) // Ordem de exibição
+
+  // Categorias vinculadas (opcional - para auto-classificação)
+  linkedCategories String[] // Array de nomes de categorias que pertencem a esta alocação
+
+  // Relacionamento com perfil
+  profileId String
+  profile   BudgetAllocationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([profileId])
+  @@map("budget_allocations")
 }
